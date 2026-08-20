@@ -1,0 +1,17 @@
+node_modules
+.expo
+.git
+.data
+*.md
+!README.md
+pecaja-expo-qr.png
+.env
+.env.*
+!.env.example
+agent-transcripts
+.cursor
+dist
+web-build
+android
+ios
+*.log

@@ -1,0 +1,56 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false,
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_USE_FLEET_SERVER": "1",
+        "EXPO_PUBLIC_API_URL": "https://api-production-8092.up.railway.app"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_USE_FLEET_SERVER": "1",
+        "EXPO_PUBLIC_API_URL": "https://api-production-8092.up.railway.app"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
+      "ios": {
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
+      }
+    }
+  }
+}

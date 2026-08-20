@@ -1,0 +1,722 @@
+[
+  {
+    "name": "Restaurante Paraguassú",
+    "normalized": "restaurante paraguassu",
+    "slug": "restaurante-paraguassu",
+    "template": "stacked_block",
+    "theme": "palette_3",
+    "category": "restaurante"
+  },
+  {
+    "name": "Point da Chapada",
+    "normalized": "point da chapada",
+    "slug": "point-da-chapada",
+    "template": "monogram_banner",
+    "theme": "palette_0",
+    "category": "restaurante"
+  },
+  {
+    "name": "Casa Amarela Hambúrguer & Cia",
+    "normalized": "casa amarela hamburguer & cia",
+    "slug": "casa-amarela-hamburguer-cia",
+    "template": "split_circle",
+    "theme": "palette_17",
+    "category": "restaurante"
+  },
+  {
+    "name": "Central Mucugê",
+    "normalized": "central mucuge",
+    "slug": "central-mucuge",
+    "template": "circular_badge",
+    "theme": "palette_18",
+    "category": "restaurante"
+  },
+  {
+    "name": "Kanona Alimentos",
+    "normalized": "kanona alimentos",
+    "slug": "kanona-alimentos",
+    "template": "circular_badge",
+    "theme": "palette_7",
+    "category": "restaurante"
+  },
+  {
+    "name": "Café Pati",
+    "normalized": "cafe pati",
+    "slug": "cafe-pati",
+    "template": "rounded_square",
+    "theme": "palette_6",
+    "category": "restaurante"
+  },
+  {
+    "name": "Bia Maria Café",
+    "normalized": "bia maria cafe",
+    "slug": "bia-maria-cafe",
+    "template": "monogram_banner",
+    "theme": "palette_4",
+    "category": "restaurante"
+  },
+  {
+    "name": "Big Tapioca Mucugê",
+    "normalized": "big tapioca mucuge",
+    "slug": "big-tapioca-mucuge",
+    "template": "geometric_diamond",
+    "theme": "palette_8",
+    "category": "restaurante"
+  },
+  {
+    "name": "Bar de Rosa",
+    "normalized": "bar de rosa",
+    "slug": "bar-de-rosa",
+    "template": "circular_badge",
+    "theme": "palette_14",
+    "category": "restaurante"
+  },
+  {
+    "name": "Padaria Diamantina",
+    "normalized": "padaria diamantina",
+    "slug": "padaria-diamantina",
+    "template": "rounded_square",
+    "theme": "palette_15",
+    "category": "padaria"
+  },
+  {
+    "name": "Padaria Ramalho",
+    "normalized": "padaria ramalho",
+    "slug": "padaria-ramalho",
+    "template": "monogram_banner",
+    "theme": "palette_9",
+    "category": "padaria"
+  },
+  {
+    "name": "Padaria Delícia da Chapada",
+    "normalized": "padaria delicia da chapada",
+    "slug": "padaria-delicia-da-chapada",
+    "template": "rounded_square",
+    "theme": "palette_3",
+    "category": "padaria"
+  },
+  {
+    "name": "Padaria, Lanchonete e Mercadinho ABN",
+    "normalized": "padaria, lanchonete e mercadinho abn",
+    "slug": "padaria-lanchonete-e-mercadinho-abn",
+    "template": "stacked_block",
+    "theme": "palette_10",
+    "category": "padaria"
+  },
+  {
+    "name": "Farma Mucugê",
+    "normalized": "farma mucuge",
+    "slug": "farma-mucuge",
+    "template": "monogram_banner",
+    "theme": "palette_14",
+    "category": "farmacia"
+  },
+  {
+    "name": "Cuidar Farma",
+    "normalized": "cuidar farma",
+    "slug": "cuidar-farma",
+    "template": "geometric_diamond",
+    "theme": "palette_0",
+    "category": "farmacia"
+  },
+  {
+    "name": "Pharmácia Gabriela",
+    "normalized": "pharmacia gabriela",
+    "slug": "pharmacia-gabriela",
+    "template": "stacked_block",
+    "theme": "palette_16",
+    "category": "farmacia"
+  },
+  {
+    "name": "Farmácia Viva Mais",
+    "normalized": "farmacia viva mais",
+    "slug": "farmacia-viva-mais",
+    "template": "split_circle",
+    "theme": "palette_9",
+    "category": "farmacia"
+  },
+  {
+    "name": "Supermercado Oliveira",
+    "normalized": "supermercado oliveira",
+    "slug": "supermercado-oliveira",
+    "template": "hex_frame",
+    "theme": "palette_3",
+    "category": "mercado"
+  },
+  {
+    "name": "Mercado Municipal Doutor Cesar Borges",
+    "normalized": "mercado municipal doutor cesar borges",
+    "slug": "mercado-municipal-doutor-cesar-borges",
+    "template": "monogram_banner",
+    "theme": "palette_10",
+    "category": "mercado"
+  },
+  {
+    "name": "Mercadinho do Centro",
+    "normalized": "mercadinho do centro",
+    "slug": "mercadinho-do-centro",
+    "template": "hex_frame",
+    "theme": "palette_4",
+    "category": "mercado"
+  },
+  {
+    "name": "Quitanda da Serra",
+    "normalized": "quitanda da serra",
+    "slug": "quitanda-da-serra",
+    "template": "geometric_diamond",
+    "theme": "palette_13",
+    "category": "mercado"
+  },
+  {
+    "name": "Depósito Gelado Mucugê",
+    "normalized": "deposito gelado mucuge",
+    "slug": "deposito-gelado-mucuge",
+    "template": "stacked_block",
+    "theme": "palette_15",
+    "category": "distribuidora"
+  },
+  {
+    "name": "Adega da Chapada",
+    "normalized": "adega da chapada",
+    "slug": "adega-da-chapada",
+    "template": "monogram_banner",
+    "theme": "palette_10",
+    "category": "bebidas"
+  },
+  {
+    "name": "Bebidas Express Mucugê",
+    "normalized": "bebidas express mucuge",
+    "slug": "bebidas-express-mucuge",
+    "template": "rounded_square",
+    "theme": "palette_5",
+    "category": "bebidas"
+  },
+  {
+    "name": "Mini Mercado Express Mucugê",
+    "normalized": "mini mercado express mucuge",
+    "slug": "mini-mercado-express-mucuge",
+    "template": "hex_frame",
+    "theme": "palette_5",
+    "category": "conveniencia"
+  },
+  {
+    "name": "Loja da Esquina Mucugê",
+    "normalized": "loja da esquina mucuge",
+    "slug": "loja-da-esquina-mucuge",
+    "template": "monogram_banner",
+    "theme": "palette_12",
+    "category": "conveniencia"
+  },
+  {
+    "name": "Stop & Go Chapada",
+    "normalized": "stop & go chapada",
+    "slug": "stop-go-chapada",
+    "template": "split_circle",
+    "theme": "palette_15",
+    "category": "conveniencia"
+  },
+  {
+    "name": "Pizza da Garagem",
+    "normalized": "pizza da garagem",
+    "slug": "pizza-da-garagem",
+    "template": "rounded_square",
+    "theme": "palette_2",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Comida Caseira Da Dona Nena",
+    "normalized": "restaurante comida caseira da dona nena",
+    "slug": "restaurante-comida-caseira-da-dona-nena",
+    "template": "circular_badge",
+    "theme": "palette_19",
+    "category": "restaurante"
+  },
+  {
+    "name": "Café Odeon",
+    "normalized": "cafe odeon",
+    "slug": "cafe-odeon",
+    "template": "split_circle",
+    "theme": "palette_13",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Sabor da Picanha",
+    "normalized": "restaurante sabor da picanha",
+    "slug": "restaurante-sabor-da-picanha",
+    "template": "monogram_banner",
+    "theme": "palette_15",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Cascalho",
+    "normalized": "restaurante cascalho",
+    "slug": "restaurante-cascalho",
+    "template": "stacked_block",
+    "theme": "palette_11",
+    "category": "restaurante"
+  },
+  {
+    "name": "Pizza no Prato",
+    "normalized": "pizza no prato",
+    "slug": "pizza-no-prato",
+    "template": "arc_badge",
+    "theme": "palette_18",
+    "category": "restaurante"
+  },
+  {
+    "name": "Ponto do Espetinho",
+    "normalized": "ponto do espetinho",
+    "slug": "ponto-do-espetinho",
+    "template": "split_circle",
+    "theme": "palette_1",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Monte Serrat",
+    "normalized": "restaurante monte serrat",
+    "slug": "restaurante-monte-serrat",
+    "template": "monogram_banner",
+    "theme": "palette_11",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Fuá",
+    "normalized": "restaurante fua",
+    "slug": "restaurante-fua",
+    "template": "arc_badge",
+    "theme": "palette_7",
+    "category": "restaurante"
+  },
+  {
+    "name": "Panela de Barro",
+    "normalized": "panela de barro",
+    "slug": "panela-de-barro",
+    "template": "monogram_banner",
+    "theme": "palette_11",
+    "category": "restaurante"
+  },
+  {
+    "name": "O Matuto",
+    "normalized": "o matuto",
+    "slug": "o-matuto",
+    "template": "geometric_diamond",
+    "theme": "palette_0",
+    "category": "restaurante"
+  },
+  {
+    "name": "Cláudia Restaurante",
+    "normalized": "claudia restaurante",
+    "slug": "claudia-restaurante",
+    "template": "geometric_diamond",
+    "theme": "palette_6",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Arenito",
+    "normalized": "restaurante arenito",
+    "slug": "restaurante-arenito",
+    "template": "stacked_block",
+    "theme": "palette_13",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Sabor e Arte",
+    "normalized": "restaurante sabor e arte",
+    "slug": "restaurante-sabor-e-arte",
+    "template": "hex_frame",
+    "theme": "palette_9",
+    "category": "restaurante"
+  },
+  {
+    "name": "Coronel Gastro Bar",
+    "normalized": "coronel gastro bar",
+    "slug": "coronel-gastro-bar",
+    "template": "geometric_diamond",
+    "theme": "palette_14",
+    "category": "restaurante"
+  },
+  {
+    "name": "Sarau e Burger",
+    "normalized": "sarau e burger",
+    "slug": "sarau-e-burger",
+    "template": "rounded_square",
+    "theme": "palette_7",
+    "category": "restaurante"
+  },
+  {
+    "name": "Capim Rosa Chá",
+    "normalized": "capim rosa cha",
+    "slug": "capim-rosa-cha",
+    "template": "split_circle",
+    "theme": "palette_16",
+    "category": "restaurante"
+  },
+  {
+    "name": "Pizzaria Da Villa",
+    "normalized": "pizzaria da villa",
+    "slug": "pizzaria-da-villa",
+    "template": "geometric_diamond",
+    "theme": "palette_8",
+    "category": "restaurante"
+  },
+  {
+    "name": "Cantinho na Serra Bistrô",
+    "normalized": "cantinho na serra bistro",
+    "slug": "cantinho-na-serra-bistro",
+    "template": "circular_badge",
+    "theme": "palette_8",
+    "category": "restaurante"
+  },
+  {
+    "name": "Sabor Garimpo Food & Beer",
+    "normalized": "sabor garimpo food & beer",
+    "slug": "sabor-garimpo-food-beer",
+    "template": "rounded_square",
+    "theme": "palette_15",
+    "category": "restaurante"
+  },
+  {
+    "name": "Mandacaru Bar e Restaurante",
+    "normalized": "mandacaru bar e restaurante",
+    "slug": "mandacaru-bar-e-restaurante",
+    "template": "stacked_block",
+    "theme": "palette_3",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante João de Barro",
+    "normalized": "restaurante joao de barro",
+    "slug": "restaurante-joao-de-barro",
+    "template": "split_circle",
+    "theme": "palette_15",
+    "category": "restaurante"
+  },
+  {
+    "name": "Abraço Café e Bistrô",
+    "normalized": "abraco cafe e bistro",
+    "slug": "abraco-cafe-e-bistro",
+    "template": "split_circle",
+    "theme": "palette_0",
+    "category": "restaurante"
+  },
+  {
+    "name": "Igatupi Café",
+    "normalized": "igatupi cafe",
+    "slug": "igatupi-cafe",
+    "template": "split_circle",
+    "theme": "palette_15",
+    "category": "restaurante"
+  },
+  {
+    "name": "Café Rabello & Gondim",
+    "normalized": "cafe rabello & gondim",
+    "slug": "cafe-rabello-gondim",
+    "template": "geometric_diamond",
+    "theme": "palette_13",
+    "category": "restaurante"
+  },
+  {
+    "name": "Café Preto",
+    "normalized": "cafe preto",
+    "slug": "cafe-preto",
+    "template": "rounded_square",
+    "theme": "palette_14",
+    "category": "restaurante"
+  },
+  {
+    "name": "Lanchonete Fid Mãe",
+    "normalized": "lanchonete fid mae",
+    "slug": "lanchonete-fid-mae",
+    "template": "stacked_block",
+    "theme": "palette_14",
+    "category": "restaurante"
+  },
+  {
+    "name": "Bendito Boteco",
+    "normalized": "bendito boteco",
+    "slug": "bendito-boteco",
+    "template": "circular_badge",
+    "theme": "palette_4",
+    "category": "restaurante"
+  },
+  {
+    "name": "Cangaço Espeto Bar",
+    "normalized": "cangaco espeto bar",
+    "slug": "cangaco-espeto-bar",
+    "template": "arc_badge",
+    "theme": "palette_8",
+    "category": "restaurante"
+  },
+  {
+    "name": "Sobrado da Lia Bistrô",
+    "normalized": "sobrado da lia bistro",
+    "slug": "sobrado-da-lia-bistro",
+    "template": "stacked_block",
+    "theme": "palette_3",
+    "category": "restaurante"
+  },
+  {
+    "name": "Braseiro do Juba",
+    "normalized": "braseiro do juba",
+    "slug": "braseiro-do-juba",
+    "template": "circular_badge",
+    "theme": "palette_13",
+    "category": "restaurante"
+  },
+  {
+    "name": "Hamburgeria Toca dos Leões",
+    "normalized": "hamburgeria toca dos leoes",
+    "slug": "hamburgeria-toca-dos-leoes",
+    "template": "monogram_banner",
+    "theme": "palette_7",
+    "category": "restaurante"
+  },
+  {
+    "name": "Chocolate Mucugê",
+    "normalized": "chocolate mucuge",
+    "slug": "chocolate-mucuge",
+    "template": "arc_badge",
+    "theme": "palette_15",
+    "category": "restaurante"
+  },
+  {
+    "name": "Restaurante Mandacaru",
+    "normalized": "restaurante mandacaru",
+    "slug": "restaurante-mandacaru",
+    "template": "arc_badge",
+    "theme": "palette_13",
+    "category": "restaurante"
+  },
+  {
+    "name": "Dona Bia Brigaderia",
+    "normalized": "dona bia brigaderia",
+    "slug": "dona-bia-brigaderia",
+    "template": "geometric_diamond",
+    "theme": "palette_5",
+    "category": "padaria"
+  },
+  {
+    "name": "Frio Bom Sorveteria",
+    "normalized": "frio bom sorveteria",
+    "slug": "frio-bom-sorveteria",
+    "template": "circular_badge",
+    "theme": "palette_5",
+    "category": "padaria"
+  },
+  {
+    "name": "Sorveteria Brandão",
+    "normalized": "sorveteria brandao",
+    "slug": "sorveteria-brandao",
+    "template": "split_circle",
+    "theme": "palette_16",
+    "category": "padaria"
+  },
+  {
+    "name": "Padaria Flor da Chapada",
+    "normalized": "padaria flor da chapada",
+    "slug": "padaria-flor-da-chapada",
+    "template": "split_circle",
+    "theme": "palette_1",
+    "category": "padaria"
+  },
+  {
+    "name": "Farmácia Chapada",
+    "normalized": "farmacia chapada",
+    "slug": "farmacia-chapada",
+    "template": "hex_frame",
+    "theme": "palette_9",
+    "category": "farmacia"
+  },
+  {
+    "name": "Farmácia Amanda",
+    "normalized": "farmacia amanda",
+    "slug": "farmacia-amanda",
+    "template": "monogram_banner",
+    "theme": "palette_3",
+    "category": "farmacia"
+  },
+  {
+    "name": "Farmácia Pati",
+    "normalized": "farmacia pati",
+    "slug": "farmacia-pati",
+    "template": "geometric_diamond",
+    "theme": "palette_17",
+    "category": "farmacia"
+  },
+  {
+    "name": "Farmácia Popular Maciel",
+    "normalized": "farmacia popular maciel",
+    "slug": "farmacia-popular-maciel",
+    "template": "geometric_diamond",
+    "theme": "palette_17",
+    "category": "farmacia"
+  },
+  {
+    "name": "Farmácia Viva Mais Vila Agrícola",
+    "normalized": "farmacia viva mais vila agricola",
+    "slug": "farmacia-viva-mais-vila-agricola",
+    "template": "rounded_square",
+    "theme": "palette_11",
+    "category": "farmacia"
+  },
+  {
+    "name": "Mercado Extra Mucugê",
+    "normalized": "mercado extra mucuge",
+    "slug": "mercado-extra-mucuge",
+    "template": "stacked_block",
+    "theme": "palette_17",
+    "category": "mercado"
+  },
+  {
+    "name": "Comercial Oliveira",
+    "normalized": "comercial oliveira",
+    "slug": "comercial-oliveira",
+    "template": "circular_badge",
+    "theme": "palette_18",
+    "category": "mercado"
+  },
+  {
+    "name": "Mercearia JJL",
+    "normalized": "mercearia jjl",
+    "slug": "mercearia-jjl",
+    "template": "split_circle",
+    "theme": "palette_17",
+    "category": "mercado"
+  },
+  {
+    "name": "Mercearia Ana Clara",
+    "normalized": "mercearia ana clara",
+    "slug": "mercearia-ana-clara",
+    "template": "geometric_diamond",
+    "theme": "palette_2",
+    "category": "mercado"
+  },
+  {
+    "name": "Casa do Morango",
+    "normalized": "casa do morango",
+    "slug": "casa-do-morango",
+    "template": "arc_badge",
+    "theme": "palette_4",
+    "category": "mercado"
+  },
+  {
+    "name": "Hortifruti Araújo",
+    "normalized": "hortifruti araujo",
+    "slug": "hortifruti-araujo",
+    "template": "arc_badge",
+    "theme": "palette_10",
+    "category": "mercado"
+  },
+  {
+    "name": "Hortifruti Leandros",
+    "normalized": "hortifruti leandros",
+    "slug": "hortifruti-leandros",
+    "template": "monogram_banner",
+    "theme": "palette_8",
+    "category": "mercado"
+  },
+  {
+    "name": "Açougue do Jaime",
+    "normalized": "acougue do jaime",
+    "slug": "acougue-do-jaime",
+    "template": "rounded_square",
+    "theme": "palette_6",
+    "category": "mercado"
+  },
+  {
+    "name": "Açougue Boi Gordo",
+    "normalized": "acougue boi gordo",
+    "slug": "acougue-boi-gordo",
+    "template": "stacked_block",
+    "theme": "palette_18",
+    "category": "mercado"
+  },
+  {
+    "name": "Açougue Mek",
+    "normalized": "acougue mek",
+    "slug": "acougue-mek",
+    "template": "split_circle",
+    "theme": "palette_6",
+    "category": "mercado"
+  },
+  {
+    "name": "CDS Oliveira Açougue",
+    "normalized": "cds oliveira acougue",
+    "slug": "cds-oliveira-acougue",
+    "template": "arc_badge",
+    "theme": "palette_4",
+    "category": "mercado"
+  },
+  {
+    "name": "Mercadinho 2 Irmãos",
+    "normalized": "mercadinho 2 irmaos",
+    "slug": "mercadinho-2-irmaos",
+    "template": "arc_badge",
+    "theme": "palette_11",
+    "category": "mercado"
+  },
+  {
+    "name": "Comercial Chapada",
+    "normalized": "comercial chapada",
+    "slug": "comercial-chapada",
+    "template": "rounded_square",
+    "theme": "palette_13",
+    "category": "mercado"
+  },
+  {
+    "name": "Comercial Propécio",
+    "normalized": "comercial propecio",
+    "slug": "comercial-propecio",
+    "template": "circular_badge",
+    "theme": "palette_12",
+    "category": "mercado"
+  },
+  {
+    "name": "Açaí da Roça & Comercial Sacerdote",
+    "normalized": "acai da roca & comercial sacerdote",
+    "slug": "acai-da-roca-comercial-sacerdote",
+    "template": "monogram_banner",
+    "theme": "palette_19",
+    "category": "mercado"
+  },
+  {
+    "name": "Empório Mucugê Best Beer",
+    "normalized": "emporio mucuge best beer",
+    "slug": "emporio-mucuge-best-beer",
+    "template": "split_circle",
+    "theme": "palette_12",
+    "category": "bebidas"
+  },
+  {
+    "name": "Na Brisa Bebidas",
+    "normalized": "na brisa bebidas",
+    "slug": "na-brisa-bebidas",
+    "template": "arc_badge",
+    "theme": "palette_5",
+    "category": "bebidas"
+  },
+  {
+    "name": "Boteco JMA Bebidas",
+    "normalized": "boteco jma bebidas",
+    "slug": "boteco-jma-bebidas",
+    "template": "monogram_banner",
+    "theme": "palette_13",
+    "category": "bebidas"
+  },
+  {
+    "name": "Felix Drink",
+    "normalized": "felix drink",
+    "slug": "felix-drink",
+    "template": "split_circle",
+    "theme": "palette_13",
+    "category": "bebidas"
+  },
+  {
+    "name": "SC Frutas Chapada",
+    "normalized": "sc frutas chapada",
+    "slug": "sc-frutas-chapada",
+    "template": "stacked_block",
+    "theme": "palette_5",
+    "category": "mercado"
+  }
+]

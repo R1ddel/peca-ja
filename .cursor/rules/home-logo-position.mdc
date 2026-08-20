@@ -1,0 +1,11 @@
+---
+description: Preserva a posição da logo Peça Já na tela inicial
+globs: app/(tabs)/index.tsx
+alwaysApply: false
+---
+
+# Logo na tela inicial
+
+- Mantenha a `<PecaJaLogo size="sm" showName />` no topo do conteúdo da tela inicial, dentro de `styles.brandRow`.
+- Não mova, remova ou altere essa posição ao modificar a Home.
+- Preserve o mesmo alinhamento e espaçamento visual da logo.

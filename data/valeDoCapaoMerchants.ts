@@ -1,0 +1,166 @@
+/**
+ * Comércios demo do Vale do Capão (Palmeiras/BA).
+ * Usados com EXPO_PUBLIC_DEMO_LOCATION=vale-do-capao.
+ */
+import { MucugeShop } from '@/data/mucugeMerchants';
+
+const u = (id: string, w = 400, h = 300) =>
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&h=${h}&q=80`;
+
+/** Lojas com cara de Capão — pack exclusivo no modo demo Vale do Capão. */
+export const VALE_DO_CAPAO_SHOPS: MucugeShop[] = [
+  {
+    name: 'Pousada e Restaurante Capão',
+    description:
+      'Comida caseira no Vale do Capão — feijão tropeiro, peixe na telha e café da manhã chapadeiro.',
+    category: 'restaurante',
+    tags: ['Capão', 'Caseiro', 'Chapada'],
+    plan: 'destaque',
+    rating: 4.8,
+    reviewCount: 186,
+    distanceKm: 0.4,
+    deliveryTime: '35-50 min',
+    image: u('photo-1414235077428-338989a2e8c0'),
+    coverImage: u('photo-1504674900247-0877df9cc836', 800, 400),
+    products: [
+      {
+        name: 'Peixe na telha',
+        description: 'Peixe local grelhado com farofa e vinagrete',
+        price: 52,
+        category: 'Pratos',
+        popular: true,
+      },
+      {
+        name: 'Feijão tropeiro',
+        description: 'Porção generosa com torresmo e ovo',
+        price: 38,
+        category: 'Pratos',
+      },
+      {
+        name: 'Suco de cajá',
+        description: 'Natural, gelado',
+        price: 12,
+        category: 'Bebidas',
+      },
+    ],
+  },
+  {
+    name: 'Mercadinho do Vale',
+    description: 'Mantimentos, hortifruti e o essencial pra trilha e pousada.',
+    category: 'mercado',
+    tags: ['Mercado', 'Hortifruti'],
+    plan: 'essencial',
+    rating: 4.6,
+    reviewCount: 94,
+    distanceKm: 0.6,
+    deliveryTime: '25-40 min',
+    image: u('photo-1578916171728-46686eac8d58'),
+    products: [
+      { name: 'Cesta café da manhã', description: 'Pão, queijo, frutas e café', price: 45, category: 'Cestas', popular: true },
+      { name: 'Água 1,5L', description: 'Pack com 6', price: 18, category: 'Bebidas' },
+      { name: 'Banana prata kg', description: 'Da roça', price: 6.5, category: 'Hortifruti' },
+    ],
+  },
+  {
+    name: 'Farmácia Capão Vida',
+    description: 'Medicamentos, protetor solar e primeiros socorros pra trilha.',
+    category: 'farmacia',
+    tags: ['Farmácia', 'Trilha'],
+    plan: 'essencial',
+    rating: 4.7,
+    reviewCount: 61,
+    distanceKm: 0.9,
+    deliveryTime: '20-35 min',
+    image: u('photo-1576602976047-174e57a47881'),
+    products: [
+      { name: 'Protetor FPS 50', description: 'Ideal pra chapada', price: 42, category: 'Cuidados', popular: true },
+      { name: 'Repelente spray', description: '120ml', price: 28, category: 'Cuidados' },
+      { name: 'Soro fisiológico', description: '500ml', price: 9, category: 'Saúde' },
+    ],
+  },
+  {
+    name: 'Pizza do Fogo',
+    description: 'Pizzas no forno a lenha no Vale — massa fina e queijo derretido.',
+    category: 'restaurante',
+    tags: ['Pizza', 'Lenha'],
+    plan: 'performance',
+    rating: 4.7,
+    reviewCount: 203,
+    distanceKm: 1.1,
+    deliveryTime: '40-55 min',
+    image: u('photo-1513104890138-7c749659a591'),
+    products: [
+      { name: 'Margherita', description: 'Molho, mussarela e manjericão', price: 48, category: 'Pizzas', popular: true },
+      { name: 'Calabresa chapadeira', description: 'Calabresa, cebola e orégano', price: 52, category: 'Pizzas' },
+      { name: 'Doce de banana', description: 'Banana, canela e leite condensado', price: 46, category: 'Pizzas' },
+    ],
+  },
+  {
+    name: 'Padaria Trilha do Sol',
+    description: 'Pão quentinho, bolo de milho e café pra sair cedo na trilha.',
+    category: 'padaria',
+    tags: ['Padaria', 'Café'],
+    plan: 'essencial',
+    rating: 4.5,
+    reviewCount: 77,
+    distanceKm: 0.5,
+    deliveryTime: '20-30 min',
+    image: u('photo-1509440159596-0249088772ff'),
+    products: [
+      { name: 'Pão francês (10un)', description: 'Fresco do forno', price: 12, category: 'Pães', popular: true },
+      { name: 'Bolo de milho', description: 'Fatia generosa', price: 9, category: 'Doces' },
+      { name: 'Café com leite', description: 'Copo 300ml', price: 7, category: 'Bebidas' },
+    ],
+  },
+  {
+    name: 'Depósito Gelado Capão',
+    description: 'Cerveja, gelo e refrigerante — entrega rápida no vale.',
+    category: 'bebidas',
+    tags: ['Bebidas', 'Gelo'],
+    plan: 'essencial',
+    rating: 4.4,
+    reviewCount: 112,
+    distanceKm: 1.4,
+    deliveryTime: '25-40 min',
+    image: u('photo-1608270586620-248524c67de9'),
+    products: [
+      { name: 'Gelo 5kg', description: 'Saco', price: 15, category: 'Gelo', popular: true },
+      { name: 'Cerveja lata (12un)', description: 'Gelada', price: 48, category: 'Cervejas' },
+      { name: 'Refri 2L', description: 'Sabores variados', price: 11, category: 'Refrigerantes' },
+    ],
+  },
+  {
+    name: 'Açaí da Cachoeira',
+    description: 'Açaí batido na hora, granola e frutas da região.',
+    category: 'restaurante',
+    tags: ['Açaí', 'Sobremesa'],
+    plan: 'performance',
+    rating: 4.8,
+    reviewCount: 158,
+    distanceKm: 0.7,
+    deliveryTime: '20-35 min',
+    image: u('photo-1590301157890-4810ed352733'),
+    products: [
+      { name: 'Açaí 500ml', description: 'Com granola e banana', price: 22, category: 'Açaí', popular: true },
+      { name: 'Açaí 700ml', description: 'Completo com leite ninho', price: 28, category: 'Açaí' },
+      { name: 'Smoothie cajá', description: 'Natural', price: 16, category: 'Bebidas' },
+    ],
+  },
+  {
+    name: 'Conveniência Portal do Capão',
+    description: 'Snacks, pilha, isqueiro e o que falta na mochila.',
+    category: 'conveniencia',
+    tags: ['Conveniência', 'Trilha'],
+    plan: 'essencial',
+    rating: 4.3,
+    reviewCount: 49,
+    distanceKm: 1.8,
+    deliveryTime: '25-40 min',
+    image: u('photo-1601593346740-925612772716'),
+    products: [
+      { name: 'Kit trilha', description: 'Barra de cereal, água e castanhas', price: 32, category: 'Kits', popular: true },
+      { name: 'Pilha AA (4un)', description: 'Alcalina', price: 18, category: 'Utilidades' },
+      { name: 'Isqueiro', description: 'Recarregável', price: 8, category: 'Utilidades' },
+    ],
+  },
+];

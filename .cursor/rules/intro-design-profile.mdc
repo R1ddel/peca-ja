@@ -1,0 +1,43 @@
+---
+description: Perfil de design profissional da abertura (BrandIntro) — contraste, hierarquia e composição
+globs: components/BrandIntro.tsx,components/IntroRealHome.tsx,app/index.tsx
+alwaysApply: false
+---
+
+# Perfil de design — Abertura Peça Já
+
+Tratar a intro como peça de marketing (nível App Store / Mibo Smart), não como splash genérico.
+
+## Composição (zonas)
+
+1. **Zona de marca (topo, ~0–28% da altura útil)**  
+   Logo + “Peça Já” + linha + “delivery do jeito certo”.  
+   Fundo sempre **verde legível** (foto + scrim). Nunca deixar texto branco sobre a onda branca / mão / display.
+
+2. **Zona do produto (meio–baixo)**  
+   Mão + iPhone com **home real do cliente**. Celular mais baixo que a marca; sem colisão com a tagline.
+
+3. **Respiro**  
+   Entre a última linha da marca e o topo do display: mínimo ~12–16px visuais.
+
+## Checklist minucioso (obrigatório ao editar)
+
+- [ ] Contraste AA: texto da marca legível sobre o fundo real (não só no Figma mental)
+- [ ] Tagline não cortada pelo iPhone nem pela onda branca
+- [ ] Safe area / notch: marca abaixo do status bar
+- [ ] Glass do display alinhado às bordas do aparelho na foto (sem “foto por cima”)
+- [ ] Home na tela = dados/UI reais do Peça Já (`IntroRealHome`), não mock de IA
+- [ ] Hierarquia: logo > nome > tagline (tamanho e opacidade)
+- [ ] Sombra da marca suave; evitar glow exagerado
+- [ ] Sem `react-native-reanimated` / worklets — só `Animated` nativo
+- [ ] Animação: wallpaper → logo → título/tagline → hold → fade out
+
+## Correções preferidas
+
+- Colisão marca × celular → **subir marca** e/ou **descer o stage do celular**
+- Texto branco em área clara → reforçar scrim verde sob a marca (não escurecer o telefone inteiro)
+- Glass desalinhado → calibrar `%` do `phoneGlass` na arte atual
+
+## Limites do projeto
+
+Expo SDK 54, sem reanimated/worklets, não alterar `app/_layout.tsx` / `app/(tabs)/_layout.tsx` sem autorização.
