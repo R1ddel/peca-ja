@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BackHeader } from '@/components/BackHeader';
 import { Button } from '@/components/Button';
+import { BrazilCityField } from '@/components/BrazilCityField';
 import { Input } from '@/components/Input';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
@@ -21,8 +22,10 @@ import {
   buildDriverTermsBody,
 } from '@/constants/driverTerms';
 import { acceptDriverTerms, submitDriverApplication } from '@/utils/partners';
+import { suggestStrongPassword } from '@/utils/suggestPassword';
 import { setDriverSession } from '@/utils/driverSession';
 import { theme } from '@/constants/theme';
+import { isBrazilCityLabel } from '@/utils/brazilCities';
 
 const VEHICLES = ['Moto', 'Bicicleta', 'Carro', 'A pé'] as const;
 const CNH_CATS = ['A', 'AB', 'ACC', 'B', 'C', 'D', 'E'];
@@ -36,6 +39,7 @@ export default function DriverRegisterScreen() {
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [document, setDocument] = useState('');
   const [city, setCity] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -79,7 +83,7 @@ export default function DriverRegisterScreen() {
     if (password.length < 4) return 'Senha com pelo menos 4 caracteres.';
     if (password !== password2) return 'As senhas não coincidem.';
     if (document.replace(/\D/g, '').length !== 11) return 'CPF inválido.';
-    if (!city.trim()) return 'Informe a cidade.';
+    if (!isBrazilCityLabel(city)) return 'Escolha a cidade de atuação na lista.';
     return null;
   }
 
@@ -275,15 +279,39 @@ export default function DriverRegisterScreen() {
                 icon="lock-closed-outline"
                 value={password}
                 onChangeText={setPassword}
-                secureTextEntry
+                isPassword
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+                passwordRules=""
+                onFocus={() => setPasswordOpen(true)}
+                editable={passwordOpen}
               />
+              <TouchableOpacity
+                onPress={() => {
+                  const next = suggestStrongPassword();
+                  setPasswordOpen(true);
+                  setPassword(next);
+                  setPassword2(next);
+                }}
+              >
+                <Text style={{ color: '#0F766E', fontWeight: '600', marginBottom: 12 }}>
+                  Sugerir uma senha forte (opcional)
+                </Text>
+              </TouchableOpacity>
               <Input
                 label="Confirmar senha *"
                 placeholder="Repita a senha"
                 icon="lock-closed-outline"
                 value={password2}
                 onChangeText={setPassword2}
-                secureTextEntry
+                isPassword
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+                passwordRules=""
+                onFocus={() => setPasswordOpen(true)}
+                editable={passwordOpen}
               />
               <Input
                 label="WhatsApp / telefone *"
@@ -301,13 +329,7 @@ export default function DriverRegisterScreen() {
                 onChangeText={setDocument}
                 keyboardType="number-pad"
               />
-              <Input
-                label="Cidade de atuação *"
-                placeholder="Ex.: Vale do Capão"
-                icon="location-outline"
-                value={city}
-                onChangeText={setCity}
-              />
+              <BrazilCityField value={city} onChange={setCity} />
               <Input
                 label="Data de nascimento"
                 placeholder="DD/MM/AAAA"

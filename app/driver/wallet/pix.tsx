@@ -14,6 +14,7 @@ import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
 import { resolveDriverApplication } from '@/utils/partners';
 import { driverFleetId } from '@/utils/driverOps';
+import { syncPayoutProfile } from '@/services/orderLedgerClient';
 import {
   DriverWallet,
   saveDriverPixKey,
@@ -56,7 +57,10 @@ export default function DriverPixScreen() {
   );
 
   async function save() {
-    if (!driverId || !appId) return;
+    if (!driverId || !appId) {
+      Alert.alert('Chave Pix', 'Abra a carteira e tente de novo.');
+      return;
+    }
     setSaving(true);
     try {
       const next = await saveDriverPixKey({
@@ -67,10 +71,22 @@ export default function DriverPixScreen() {
         pixHolderName: holder,
         pixDocument: document,
       });
+      if (next.pixKey && next.pixKeyType && next.pixDocument) {
+        const profile = {
+          ownerType: 'driver' as const,
+          pixKey: next.pixKey,
+          pixKeyType: next.pixKeyType,
+          holderName: next.pixHolderName || holder,
+          document: next.pixDocument,
+        };
+        await syncPayoutProfile({ ...profile, ownerId: driverId });
+        if (user?.id && user.id !== driverId) {
+          await syncPayoutProfile({ ...profile, ownerId: user.id });
+        }
+      }
       setWallet(next);
-      Alert.alert('Chave Pix', 'Salva com sucesso.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      router.replace('/driver/wallet' as any);
+      return;
     } catch (e: any) {
       Alert.alert('Chave Pix', e?.message ?? 'Não foi possível salvar.');
     } finally {

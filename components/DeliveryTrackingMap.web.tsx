@@ -1,60 +1,64 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { theme } from '@/constants/theme';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { getUserPlaceDetails, type UserPlaceDetails } from '@/services/permissions';
+import { subscribeDemoLocation } from '@/utils/demoLocation';
+import { InAppGoogleMap } from '@/components/InAppGoogleMap';
 
 type Props = { fallbackName?: string };
 
-/** Stub web â€” mapa nativo quebra o bundle do servidor Expo. */
-export function DeliveryTrackingMap({ fallbackName = 'VocÃª' }: Props) {
+/** Home web: Google Maps ativo dentro do app (pin certo). Waze só como atalho. */
+export function DeliveryTrackingMap({ fallbackName = 'Você' }: Props) {
+  const [place, setPlace] = useState<UserPlaceDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const details = await getUserPlaceDetails();
+      if (!details) {
+        setPlace(null);
+        setError('Ative a localização para ver o mapa.');
+        return;
+      }
+      setPlace(details);
+    } catch {
+      setPlace(null);
+      setError('Não foi possível ler a localização.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    return subscribeDemoLocation(() => {
+      void load();
+    });
+  }, [load]);
+
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <Ionicons name="map" size={16} color={theme.colors.primary} />
-        <Text style={styles.title}>Mapa perto de vocÃª</Text>
-      </View>
-      <TouchableOpacity
-        style={styles.mapPlaceholder}
-        activeOpacity={0.9}
-        onPress={() => router.push('/map' as any)}
-      >
-        <Ionicons name="map-outline" size={36} color={theme.colors.textMuted} />
-        <Text style={styles.placeholderText}>
-          Mapa completo no celular Â· {fallbackName}
-        </Text>
-      </TouchableOpacity>
+    <View style={styles.wrap}>
+      {place || loading || error ? (
+        <InAppGoogleMap
+          center={
+            place
+              ? { latitude: place.latitude, longitude: place.longitude }
+              : { latitude: -13.0054, longitude: -41.3706 }
+          }
+          label={fallbackName}
+          cityLabel={place?.city || 'Mapa perto de você'}
+          height={210}
+          loading={loading && !place}
+          error={!place ? error : null}
+          onRefresh={() => void load()}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: theme.colors.borderLight,
-  },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  title: {
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-  },
-  mapPlaceholder: {
-    height: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E8F2EC',
-    borderRadius: theme.radius.md,
-    gap: 8,
-    padding: theme.spacing.md,
-  },
-  placeholderText: {
-    textAlign: 'center',
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSize.sm,
-  },
+  wrap: { marginBottom: 14 },
 });

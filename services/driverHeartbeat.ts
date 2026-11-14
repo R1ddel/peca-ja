@@ -9,6 +9,7 @@ export type HeartbeatDriver = {
   applicationId: string;
   name: string;
   phone: string;
+  city?: string;
 };
 
 export async function sendDriverHeartbeat(
@@ -47,6 +48,7 @@ export async function sendDriverHeartbeat(
     latitude,
     longitude,
     heading,
+    city: driver.city,
   });
 
   if (!res) return { ok: false };

@@ -25,6 +25,97 @@ function ledgerBalance(
     );
 }
 
+/** Dívida sacável negativa (ex.: taxas de dinheiro sem crédito Pix ainda). */
+export function merchantCashFeeDebt(state: PlatformState, businessId: string): number {
+  if (!businessId) return 0;
+  return round2(Math.max(0, -ledgerBalance(state, 'merchant', businessId)));
+}
+
+const CASH_FEE_RECOVERY_NOTE = (orderId: string) => `rec taxa dinheiro ${orderId}`;
+
+function hasCashFeeRecovery(
+  ledger: LedgerEntry[],
+  businessId: string,
+  orderId: string
+): boolean {
+  return ledger.some(
+    (e) =>
+      e.kind === 'credit' &&
+      e.ownerType === 'merchant' &&
+      e.ownerId === businessId &&
+      e.orderId === orderId &&
+      (e.note || '') === CASH_FEE_RECOVERY_NOTE(orderId)
+  );
+}
+
+/**
+ * Após Pix/cartão com application_fee que já abateu a dívida:
+ * zera o saldo negativo no ledger (sem creditar o valor do prato de novo).
+ */
+export async function creditMerchantCashFeeRecovery(
+  order: Order,
+  amountOverride?: number
+): Promise<{
+  ok: boolean;
+  skipped?: boolean;
+  entry?: LedgerEntry;
+  message?: string;
+}> {
+  const amount = round2(
+    Number(
+      amountOverride ??
+        order.cashFeeDebtRecovered ??
+        0
+    )
+  );
+  if (amount < 0.01) return { ok: true, skipped: true };
+  if (!order.businessId) return { ok: false, message: 'Pedido sem loja.' };
+
+  const state0 = await loadPlatformState();
+  if (hasCashFeeRecovery(state0.ledger, order.businessId, order.id)) {
+    return { ok: true, skipped: true };
+  }
+
+  return mutatePlatformState((state) => {
+    if (hasCashFeeRecovery(state.ledger, order.businessId, order.id)) {
+      return {
+        state,
+        result: {
+          ok: true as const,
+          skipped: true as const,
+          entry: undefined as LedgerEntry | undefined,
+        },
+      };
+    }
+    const debt = merchantCashFeeDebt(state, order.businessId);
+    const recover = round2(Math.min(amount, debt > 0 ? debt : amount));
+    if (recover < 0.01) {
+      return {
+        state,
+        result: {
+          ok: true as const,
+          skipped: true as const,
+          entry: undefined as LedgerEntry | undefined,
+        },
+      };
+    }
+    const entry: LedgerEntry = {
+      id: newId('led'),
+      ownerType: 'merchant',
+      ownerId: order.businessId,
+      orderId: order.id,
+      kind: 'credit',
+      amount: recover,
+      note: CASH_FEE_RECOVERY_NOTE(order.id),
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      state: { ...state, ledger: [...state.ledger, entry] },
+      result: { ok: true as const, skipped: false as const, entry },
+    };
+  });
+}
+
 /** Já existe crédito aberto (sem debit de estorno) para este orderId + owner. */
 export function hasOpenOrderCredit(
   ledger: LedgerEntry[],
@@ -37,7 +128,9 @@ export function hasOpenOrderCredit(
       e.kind === 'credit' &&
       e.orderId === orderId &&
       e.ownerType === ownerType &&
-      e.ownerId === ownerId
+      e.ownerId === ownerId &&
+      // Recovery de taxa em dinheiro não conta como crédito do pedido
+      !(e.note || '').startsWith('rec taxa dinheiro')
   );
   if (credits.length === 0) return false;
   const debited = ledger.some(
@@ -60,7 +153,7 @@ export function driverCreditAmount(order: Order): number {
 }
 
 /**
- * Credita a loja após pagamento confirmado.
+ * Credita a loja só depois da entrega confirmada.
  * Idempotente: não duplica se já houver crédito para o orderId.
  */
 export async function creditMerchantForPaidOrder(order: Order): Promise<{
@@ -69,6 +162,9 @@ export async function creditMerchantForPaidOrder(order: Order): Promise<{
   entry?: LedgerEntry;
   message?: string;
 }> {
+  if (order.status !== 'entregue') {
+    return { ok: false, message: 'A loja só recebe depois da entrega confirmada.' };
+  }
   const amount = merchantCreditAmount(order);
   if (amount < 0.01) {
     return { ok: false, message: 'Valor da loja inválido.' };
@@ -96,7 +192,67 @@ export async function creditMerchantForPaidOrder(order: Order): Promise<{
       orderId: order.id,
       kind: 'credit',
       amount,
-      note: `Pedido ${order.id} confirmado`,
+      note: `Pedido ${order.id} entregue`,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      state: { ...state, ledger: [...state.ledger, entry] },
+      result: { ok: true as const, skipped: false as const, entry },
+    };
+  });
+}
+
+const CASH_FEE_NOTE = (orderId: string) => `taxa dinheiro ${orderId}`;
+
+function hasCashFeeDebit(ledger: LedgerEntry[], businessId: string, orderId: string): boolean {
+  return ledger.some(
+    (e) =>
+      e.kind === 'debit' &&
+      e.ownerType === 'merchant' &&
+      e.ownerId === businessId &&
+      e.orderId === orderId &&
+      (e.note || '') === CASH_FEE_NOTE(orderId)
+  );
+}
+
+/**
+ * Loja que entrega com a própria equipe e recebe em dinheiro.
+ * A taxa Peça Já sai do saldo (próximo saque), sem ficar na mão de ninguém.
+ * Idempotente por pedido.
+ */
+export async function debitMerchantCashPlatformFee(order: Order): Promise<{
+  ok: boolean;
+  skipped?: boolean;
+  entry?: LedgerEntry;
+  message?: string;
+}> {
+  if (order.deliveryBy !== 'store' || order.paymentProvider !== 'offline') {
+    return { ok: true, skipped: true };
+  }
+  const amount = round2(Number(order.cashFeePixAmount ?? order.platformFee ?? 0));
+  if (amount < 0.01) return { ok: true, skipped: true };
+  if (!order.businessId) return { ok: false, message: 'Pedido sem loja.' };
+
+  const state0 = await loadPlatformState();
+  if (hasCashFeeDebit(state0.ledger, order.businessId, order.id)) {
+    return { ok: true, skipped: true };
+  }
+
+  return mutatePlatformState((state) => {
+    if (hasCashFeeDebit(state.ledger, order.businessId, order.id)) {
+      return {
+        state,
+        result: { ok: true as const, skipped: true as const, entry: undefined as LedgerEntry | undefined },
+      };
+    }
+    const entry: LedgerEntry = {
+      id: newId('led'),
+      ownerType: 'merchant',
+      ownerId: order.businessId,
+      orderId: order.id,
+      kind: 'debit',
+      amount,
+      note: CASH_FEE_NOTE(order.id),
       createdAt: new Date().toISOString(),
     };
     return {
@@ -178,7 +334,17 @@ export async function reverseLedgerCreditsForOrder(orderId: string): Promise<{
     );
   });
 
-  if (toReverse.length === 0) {
+  const feeStillOpen = state0.ledger.some(
+    (e) =>
+      e.kind === 'debit' &&
+      e.orderId === orderId &&
+      (e.note || '') === `taxa dinheiro ${orderId}` &&
+      !state0.ledger.some(
+        (r) => r.kind === 'credit' && (r.note || '') === `estorno taxa dinheiro ${orderId}`
+      )
+  );
+
+  if (toReverse.length === 0 && !feeStillOpen) {
     return { ok: true, reversed: 0, entries: [] };
   }
 
@@ -205,9 +371,38 @@ export async function reverseLedgerCreditsForOrder(orderId: string): Promise<{
       note: `estorno pedido ${orderId}`,
       createdAt: now,
     }));
+    const feeDebit = state.ledger.find(
+      (e) =>
+        e.kind === 'debit' &&
+        e.ownerType === 'merchant' &&
+        e.orderId === orderId &&
+        (e.note || '') === `taxa dinheiro ${orderId}`
+    );
+    const feeAlreadyReversed = state.ledger.some(
+      (e) =>
+        e.kind === 'credit' &&
+        e.orderId === orderId &&
+        (e.note || '') === `estorno taxa dinheiro ${orderId}`
+    );
+    const feeReversal: LedgerEntry[] =
+      feeDebit && !feeAlreadyReversed
+        ? [
+            {
+              id: newId('led'),
+              ownerType: 'merchant' as const,
+              ownerId: feeDebit.ownerId,
+              orderId,
+              kind: 'credit' as const,
+              amount: feeDebit.amount,
+              note: `estorno taxa dinheiro ${orderId}`,
+              createdAt: now,
+            },
+          ]
+        : [];
+    const entries = [...debits, ...feeReversal];
     return {
-      state: { ...state, ledger: [...state.ledger, ...debits] },
-      result: { ok: true as const, reversed: debits.length, entries: debits },
+      state: { ...state, ledger: [...state.ledger, ...entries] },
+      result: { ok: true as const, reversed: entries.length, entries },
     };
   });
 }

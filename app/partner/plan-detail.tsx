@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/BackHeader';
 import { Button } from '@/components/Button';
 import { MobileShell } from '@/components/MobileShell';
@@ -19,35 +19,69 @@ import {
   getNextPlan,
   isMerchantPlanId,
 } from '@/constants/plans';
+import { useAuth } from '@/context/AuthContext';
 import { getUserPlaceDetails } from '@/services/permissions';
 import { CityBrand, resolveCityBrand } from '@/utils/cityBrand';
-import { setMerchantPlan } from '@/utils/partners';
+import {
+  normalizeRouteParam,
+  resolveMerchantAppForRoute,
+  setMerchantPlan,
+} from '@/utils/partners';
 import { theme } from '@/constants/theme';
 
 export default function PartnerPlanDetailScreen() {
-  const { id, plan: planParam } = useLocalSearchParams<{ id?: string; plan?: string }>();
-  const planId: MerchantPlan = isMerchantPlanId(planParam) ? planParam : 'crescimento';
+  const { id: idParam, plan: planParam } = useLocalSearchParams<{
+    id?: string | string[];
+    plan?: string | string[];
+  }>();
+  const { user } = useAuth();
+  const planId: MerchantPlan = isMerchantPlanId(normalizeRouteParam(planParam))
+    ? (normalizeRouteParam(planParam) as MerchantPlan)
+    : 'crescimento';
   const plan = MERCHANT_PLANS[planId];
   const nextId = getNextPlan(planId);
   const nextPlan = nextId ? MERCHANT_PLANS[nextId] : null;
 
+  const [appId, setAppId] = useState(() => normalizeRouteParam(idParam));
   const [brand, setBrand] = useState<CityBrand>(() => resolveCityBrand(null));
+  const [operatingCity, setOperatingCity] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resolving, setResolving] = useState(true);
   const [error, setError] = useState('');
 
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        setResolving(true);
+        setError('');
+        try {
+          const found = await resolveMerchantAppForRoute(idParam, user?.email);
+          if (cancelled) return;
+          if (found) {
+            setAppId(found.id);
+            if (found.city) setOperatingCity(found.city);
+          } else {
+            setAppId('');
+          }
+          const place = await getUserPlaceDetails();
+          if (!cancelled) setBrand(resolveCityBrand(place?.city ?? found?.city));
+        } catch {
+          if (!cancelled) setBrand(resolveCityBrand(null));
+        } finally {
+          if (!cancelled) setResolving(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [idParam, user?.email])
+  );
+
   useEffect(() => {
-    let cancelled = false;
-    getUserPlaceDetails()
-      .then((place) => {
-        if (!cancelled) setBrand(resolveCityBrand(place?.city));
-      })
-      .catch(() => {
-        if (!cancelled) setBrand(resolveCityBrand(null));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const fromUrl = normalizeRouteParam(idParam);
+    if (fromUrl && fromUrl !== appId) setAppId(fromUrl);
+  }, [idParam, appId]);
 
   const priceDiff = useMemo(() => {
     if (!nextPlan) return null;
@@ -55,24 +89,29 @@ export default function PartnerPlanDetailScreen() {
     return formatPlanPrice(diff);
   }, [nextPlan, plan.monthlyPrice]);
 
-  const plansFallback = id
-    ? (`/partner/plans?id=${encodeURIComponent(id)}` as const)
+  const plansFallback = appId
+    ? (`/partner/plans?id=${encodeURIComponent(appId)}` as const)
     : '/partner/plans';
 
   async function chooseThisPlan() {
-    if (!id) {
-      setError('Cadastro não encontrado. Volte e revise os dados da loja.');
+    setError('');
+    // Sem cadastro: primeiro cria a loja, depois volta já com o plano e o Pix.
+    if (!appId) {
+      router.push({
+        pathname: '/partner/merchant-apply' as any,
+        params: { plan: planId, next: 'pay' },
+      });
       return;
     }
+
     setLoading(true);
-    setError('');
-    const updated = await setMerchantPlan(id, planId, brand.displayName);
+    const updated = await setMerchantPlan(appId, planId, operatingCity || brand.displayName);
     setLoading(false);
     if (!updated) {
       setError('Não foi possível salvar o plano. Tente de novo.');
       return;
     }
-    router.push({ pathname: '/partner/pay' as any, params: { id } });
+    router.push({ pathname: '/partner/pay' as any, params: { id: appId } });
   }
 
   return (
@@ -120,7 +159,7 @@ export default function PartnerPlanDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: '/partner/plan-detail' as any,
-                params: { id, plan: nextId },
+                params: { id: appId || undefined, plan: nextId },
               })
             }
             style={styles.upsellWrap}
@@ -154,21 +193,31 @@ export default function PartnerPlanDetailScreen() {
           </View>
         )}
 
+        {!resolving && !appId && (
+          <Text style={styles.hint}>
+            Ainda não achamos o cadastro da loja neste aparelho. Ao continuar, você preenche os
+            dados e já segue para o Pix/cartão.
+          </Text>
+        )}
         {!!error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
 
       <View style={styles.sticky}>
         <Button
-          title={`Escolher ${plan.label} · pagar com Pix`}
+          title={
+            appId
+              ? `Escolher ${plan.label} · pagar com Pix`
+              : `Cadastrar loja e pagar ${plan.label}`
+          }
           onPress={() => void chooseThisPlan()}
-          loading={loading}
+          loading={loading || resolving}
           size="lg"
         />
         <TouchableOpacity
           style={styles.backLink}
           onPress={() =>
-            id
-              ? router.push({ pathname: '/partner/plans' as any, params: { id } })
+            appId
+              ? router.push({ pathname: '/partner/plans' as any, params: { id: appId } })
               : router.back()
           }
         >
@@ -193,14 +242,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: theme.radius.full,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   pillText: { color: '#fff', fontSize: 11, fontWeight: theme.fontWeight.bold },
   name: {
     fontSize: 28,
     fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
   tagline: {
     marginTop: 6,
@@ -208,40 +257,48 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     lineHeight: 22,
   },
-  priceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginTop: 14 },
+  priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 14, gap: 4 },
   price: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.text,
   },
-  priceSuffix: { fontSize: theme.fontSize.sm, color: theme.colors.textMuted, marginBottom: 4 },
-  cityHint: { marginTop: 6, fontSize: theme.fontSize.xs, color: theme.colors.textMuted },
+  priceSuffix: {
+    marginBottom: 6,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+  },
+  cityHint: {
+    marginTop: 8,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+  },
   section: {
-    paddingHorizontal: theme.spacing.lg,
     marginTop: theme.spacing.lg,
-    marginBottom: 8,
-    fontSize: theme.fontSize.lg,
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+    fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
   },
   pitch: {
-    paddingHorizontal: theme.spacing.lg,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.textSecondary,
-    lineHeight: 22,
+    marginHorizontal: theme.spacing.lg,
     marginBottom: theme.spacing.md,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
   },
   whyRow: {
     flexDirection: 'row',
     gap: 10,
-    paddingHorizontal: theme.spacing.lg,
-    marginBottom: 10,
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: 8,
     alignItems: 'flex-start',
   },
   whyDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
@@ -250,33 +307,34 @@ const styles = StyleSheet.create({
   perkRow: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: theme.spacing.lg,
+    marginHorizontal: theme.spacing.lg,
     marginBottom: 8,
+    alignItems: 'flex-start',
   },
-  perkText: { flex: 1, fontSize: theme.fontSize.sm, color: theme.colors.text, lineHeight: 19 },
+  perkText: { flex: 1, fontSize: theme.fontSize.sm, color: theme.colors.text, lineHeight: 20 },
   upsellWrap: { marginHorizontal: theme.spacing.lg, marginTop: theme.spacing.lg },
   upsell: {
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.xl,
     borderWidth: 1.5,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.md,
   },
-  upsellHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  upsellTitle: { flex: 1, fontWeight: theme.fontWeight.bold, fontSize: theme.fontSize.md },
+  upsellHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  upsellTitle: { flex: 1, fontWeight: theme.fontWeight.bold, fontSize: theme.fontSize.sm },
   upsellHook: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
     lineHeight: 19,
-    marginBottom: 8,
   },
   upsellPrice: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
+    marginTop: 8,
+    fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
+    fontSize: theme.fontSize.sm,
   },
   upsellCta: {
-    marginTop: 10,
+    marginTop: 6,
+    fontWeight: theme.fontWeight.semibold,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.bold,
   },
   topNote: {
     flexDirection: 'row',
@@ -288,29 +346,38 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
   },
   topNoteText: { flex: 1, fontSize: theme.fontSize.sm, color: theme.colors.text, lineHeight: 19 },
-  error: {
-    color: theme.colors.error,
-    paddingHorizontal: theme.spacing.lg,
+  hint: {
+    marginHorizontal: theme.spacing.lg,
     marginTop: theme.spacing.md,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: 19,
+  },
+  error: {
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+    color: theme.colors.error,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
   },
   sticky: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.surface,
+    padding: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+    backgroundColor: theme.colors.background,
     borderTopWidth: 1,
     borderTopColor: theme.colors.borderLight,
+    gap: 10,
   },
   backLink: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: theme.spacing.sm,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   backLinkText: {
     color: theme.colors.primary,

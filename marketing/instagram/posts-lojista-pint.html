@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Peça Já — lojista estilo Pinterest</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@600;700&family=Poppins:wght@600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --green: #00a86b;
+    --forest: #1e3a2f;
+    --gold: #ffb800;
+    --cream: #f6f0e6;
+    --ink: #1a2e24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #cfd9d3; display: flex; flex-direction: column; align-items: center;
+    gap: 48px; padding: 48px 0 96px; font-family: Poppins, sans-serif;
+  }
+  .label { font: 600 18px Poppins, sans-serif; color: #2a3d33; width: 1080px; }
+  .art {
+    position: relative; overflow: hidden; width: 1080px; height: 1350px; flex: none;
+    box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  }
+  .bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .anton { font-family: Anton, Impact, sans-serif; letter-spacing: .02em; line-height: .88; text-transform: uppercase; }
+  .osw { font-family: Oswald, sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .bar {
+    position: absolute; left: 48px; right: 48px; bottom: 48px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: #fff; color: var(--forest); border-radius: 999px; padding: 18px 28px;
+    font: 700 22px/1.2 Poppins, sans-serif; box-shadow: 0 16px 40px rgba(0,0,0,.25);
+  }
+  .bar b { background: var(--forest); color: #fff; border-radius: 999px; padding: 14px 22px; font: 800 20px Poppins, sans-serif; white-space: nowrap; }
+  .bar.gold { background: var(--gold); }
+  .bar.dark { background: var(--forest); color: #fff; }
+  .bar.dark b { background: var(--gold); color: var(--forest); }
+  .pill {
+    display: inline-block; background: var(--gold); color: var(--forest);
+    font: 800 22px/1 Poppins, sans-serif; padding: 12px 22px; border-radius: 999px;
+  }
+  .stamp {
+    display: inline-block; background: var(--green); color: #fff;
+    font: 900 28px/1 Poppins, sans-serif; padding: 14px 22px;
+    transform: rotate(-4deg); box-shadow: 8px 8px 0 var(--gold);
+  }
+</style>
+</head>
+<body>
+
+<div class="label">Lojista Pinterest 01 · Estamos no Peça Já (ref. pin comida saindo do celular)</div>
+<div class="art" id="pint-01">
+  <div class="bg" style="background-image:url(lojista-pint/base-estamos.jpg);background-position:center 42%"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,18,12,.72) 0%,rgba(8,18,12,.08) 28%,rgba(8,18,12,0) 48%,rgba(8,18,12,.55) 100%)"></div>
+  <div style="position:absolute;left:56px;top:52px"><span class="pill">Para lojistas · Mucugê</span></div>
+  <div style="position:absolute;left:48px;right:48px;top:130px;text-align:center;color:#fff">
+    <div class="anton" style="font-size:128px;text-shadow:0 8px 0 #0b1c14,0 18px 40px rgba(0,0,0,.5)">Estamos no</div>
+    <div class="anton" style="font-size:140px;color:var(--gold);text-shadow:0 8px 0 #0b1c14">Peça Já</div>
+  </div>
+  <div class="bar gold">
+    <span>O preço do cardápio fica com você</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">Lojista Pinterest 02 · O preço é seu (ref. burger hero)</div>
+<div class="art" id="pint-02">
+  <div class="bg" style="background-image:url(lojista-pint/base-burger.jpg);background-position:center 70%"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:430px;background:linear-gradient(180deg,#f6f0e6 0%,#f6f0e6 62%,rgba(246,240,230,0) 100%)"></div>
+  <div style="position:absolute;left:0;right:0;top:36px;text-align:center">
+    <div class="osw" style="font-size:26px;color:var(--forest);letter-spacing:.18em">Lojista de Mucugê</div>
+    <div class="anton" style="margin-top:10px;font-size:108px;color:var(--forest)">O preço é</div>
+    <div class="anton" style="font-size:120px;color:var(--green)">seu</div>
+  </div>
+  <div style="position:absolute;left:70px;right:70px;top:390px;text-align:center">
+    <span class="stamp">R$ 25 no cardápio = R$ 25 no caixa</span>
+  </div>
+  <div class="bar">
+    <span>Sem comissão de 20–30% no prato</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">Lojista Pinterest 03 · Já pago no Pix (ref. burger explodido)</div>
+<div class="art" id="pint-03">
+  <div class="bg" style="background-image:url(lojista-pint/base-explodido.jpg);background-position:center 55%"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:400px;background:linear-gradient(180deg,#f3ece0 0%,#f3ece0 58%,rgba(243,236,224,0) 100%)"></div>
+  <div style="position:absolute;left:48px;right:48px;top:48px;text-align:center">
+    <span class="pill">Para lojistas</span>
+    <div class="anton" style="margin-top:22px;font-size:92px;color:var(--forest)">Já pago</div>
+    <div class="anton" style="font-size:108px;color:var(--green)">no Pix</div>
+    <div class="osw" style="margin-top:12px;font-size:28px;color:#5a6b62">Pedido chega pago. Sem calote. Sem “já saiu?”.</div>
+  </div>
+  <div class="bar dark">
+    <span>Cliente paga no app. Você prepara.</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">Lojista Pinterest 04 · 1º mês incluso (ref. prato moody)</div>
+<div class="art" id="pint-04">
+  <div class="bg" style="background-image:url(lojista-pint/base-prato.jpg);background-position:center 58%"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,16,12,.78) 0%,rgba(10,16,12,.15) 42%,rgba(10,16,12,.55) 100%)"></div>
+  <div style="position:absolute;left:56px;right:56px;top:70px;text-align:center;color:#fff">
+    <div class="osw" style="font-size:28px;letter-spacing:.22em;color:var(--gold)">Oferta do lançamento</div>
+    <div class="anton" style="margin-top:18px;font-size:96px">1º mês</div>
+    <div class="anton" style="font-size:112px;color:var(--gold)">incluso</div>
+    <div class="osw" style="margin-top:16px;font-size:34px">Depois R$ 200. Sem % no faturamento.</div>
+  </div>
+  <div class="bar gold">
+    <span>Plano Já na Rua · lojas do lançamento</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">Lojista Pinterest 05 · Sua loja no app (ref. sacola + celular)</div>
+<div class="art" id="pint-05">
+  <div class="bg" style="background-image:url(lojista-pint/base-sacola.jpg);background-position:center 40%"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,184,0,.55) 0%,rgba(255,184,0,.12) 38%,rgba(20,40,28,.35) 100%)"></div>
+  <div style="position:absolute;right:0;top:0;bottom:0;width:92px;background:var(--forest);display:flex;align-items:center;justify-content:center">
+    <div class="anton" style="color:var(--gold);font-size:70px;transform:rotate(90deg);white-space:nowrap;letter-spacing:.18em">Delivery</div>
+  </div>
+  <div style="position:absolute;left:48px;right:120px;top:56px;color:var(--forest)">
+    <span class="pill" style="background:var(--forest);color:#fff">Apoiadores do lançamento</span>
+    <div class="anton" style="margin-top:28px;font-size:92px;color:var(--forest);text-shadow:0 4px 0 rgba(255,255,255,.35)">Sua loja</div>
+    <div class="anton" style="font-size:108px;color:#fff;text-shadow:0 6px 0 var(--forest)">no Peça Já</div>
+    <div class="osw" style="margin-top:14px;font-size:30px;color:var(--forest)">As primeiras lojas definem a cara do app em Mucugê.</div>
+  </div>
+  <div class="bar dark" style="right:140px">
+    <span>Entra na lista agora</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+</body>
+</html>

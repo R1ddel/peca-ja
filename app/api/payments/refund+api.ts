@@ -113,6 +113,7 @@ export async function POST(request: Request) {
       return Response.json({
         ok: true,
         skipped: true,
+        refundStatus: 'skipped',
         message: 'Pagamento local/mock — sem estorno no gateway.',
         ledgerReversed: reversed.reversed,
       });
@@ -134,9 +135,55 @@ export async function POST(request: Request) {
     const order = state.orders.find((o) => o.id === orderId);
     const reversed = await reverseLedgerCreditsForOrder(orderId);
 
+    const gatewayStatus = String(result.status || '').toLowerCase();
+    const refundStatus =
+      ['approved', 'accredited', 'refunded'].includes(gatewayStatus)
+        ? 'confirmed'
+        : ['rejected', 'cancelled', 'canceled', 'failed'].includes(gatewayStatus)
+          ? 'failed'
+          : 'processing';
+
+    // Grava o estorno no pedido da plataforma para o cliente ver no sync.
+    if (order && refundStatus !== 'failed') {
+      try {
+        const { savePlatformState } = await import('@/services/platformStore');
+        const nextOrders = state.orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                refundStatus,
+                refundId: result.refundId || o.refundId,
+                refundMessage:
+                  refundStatus === 'confirmed'
+                    ? 'Estorno confirmado no Mercado Pago.'
+                    : 'Estorno enviado ao Mercado Pago e em processamento.',
+                refundAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+            : o
+        );
+        await savePlatformState({ ...state, orders: nextOrders });
+      } catch (stampErr: any) {
+        console.warn('[payments/refund] stamp order refund:', stampErr?.message || stampErr);
+      }
+    }
+
+    if (refundStatus === 'failed') {
+      return Response.json(
+        {
+          ok: false,
+          code: 'REFUND_REJECTED',
+          message: 'O Mercado Pago recusou o estorno. O pedido não deve ser cancelado.',
+          ...result,
+        },
+        { status: 502 }
+      );
+    }
+
     return Response.json({
       ok: true,
       ...result,
+      refundStatus,
       ledgerReversed: reversed.reversed,
       settlementMode: order?.settlementMode || 'collector_ledger',
       note:

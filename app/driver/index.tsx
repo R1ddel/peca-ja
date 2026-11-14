@@ -23,12 +23,11 @@ import {
   DriverApplication,
   partnerStatusLabel,
   resolveDriverApplication,
+  pullDriverStatusFromHq,
   setPartnerStatus,
   driverOnboardingGate,
-  getApplicationById,
   isDriverPanelUnlocked,
 } from '@/utils/partners';
-import { getDriverSession } from '@/utils/driverSession';
 import {
   driverFleetId,
   getDriverOnline,
@@ -41,6 +40,7 @@ import {
   driverPublicProfile,
 } from '@/utils/driverOps';
 import {
+  driverCanTakeCity,
   getOfferForDriver,
   offerSecondsLeft,
 } from '@/utils/driverDispatch';
@@ -72,6 +72,7 @@ import {
 import { theme } from '@/constants/theme';
 import { sendDriverHeartbeat } from '@/services/driverHeartbeat';
 import { usePublishDriverLocation } from '@/hooks/usePublishDriverLocation';
+import { DriverGpsBanner } from '@/components/DriverGpsBanner';
 
 const ACCENT = '#7C3AED';
 const LEAGUE_SEED_FLAG = '@pecaja_league_demo_seeded_v1';
@@ -115,7 +116,10 @@ export default function DriverPanelScreen() {
 
   const fleetId = app ? driverFleetId(app) : null;
 
-  const jobs = useMemo(() => listAvailableJobs(orders), [orders]);
+  const jobs = useMemo(
+    () => listAvailableJobs(orders).filter((order) => driverCanTakeCity(app?.city, order.city)),
+    [orders, app?.city]
+  );
   const active = useMemo(
     () => (fleetId ? listDriverActive(orders, fleetId) : []),
     [orders, fleetId]
@@ -125,20 +129,21 @@ export default function DriverPanelScreen() {
     [orders, fleetId]
   );
 
-  usePublishDriverLocation(
+  const gpsStatus = usePublishDriverLocation(
     app && fleetId
       ? {
           fleetId,
           applicationId: app.id,
           name: app.name,
           phone: app.phone,
+          city: app.city,
         }
       : null,
-    !!app && !!fleetId && online && active.length > 0
+    !!app && !!fleetId && online
   );
   const offer = useMemo(
-    () => (fleetId ? getOfferForDriver(orders, fleetId, nowMs) : null),
-    [orders, fleetId, nowMs]
+    () => (fleetId && app ? getOfferForDriver(orders, fleetId, nowMs, app.city ?? '') : null),
+    [orders, fleetId, nowMs, app]
   );
   const secondsLeft = offer ? offerSecondsLeft(offer, nowMs) : 0;
   const showOfferPopup =
@@ -164,15 +169,7 @@ export default function DriverPanelScreen() {
     if (!hasLoadedRef.current) setLoading(true);
     try {
       // Wipe forçado só no login — aqui só abre o painel com a sessão atual.
-      const session = await getDriverSession();
-      let found: DriverApplication | null = null;
-      if (session?.applicationId) {
-        const byId = await getApplicationById(session.applicationId);
-        if (byId?.role === 'driver') found = byId;
-      }
-      if (!found) {
-        found = await resolveDriverApplication(user?.email);
-      }
+      const found = await resolveDriverApplication(user?.email);
       setApp(found);
 
       if (found && isDriverPanelUnlocked(found)) {
@@ -295,6 +292,7 @@ export default function DriverPanelScreen() {
         applicationId: app.id,
         name: app.name,
         phone: app.phone,
+        city: app.city,
       },
       value
     );
@@ -321,6 +319,7 @@ export default function DriverPanelScreen() {
             applicationId: app.id,
             name: app.name,
             phone: app.phone,
+            city: app.city,
           },
           true
         );
@@ -391,10 +390,6 @@ export default function DriverPanelScreen() {
       }
       await resetDriverOfferDeclines(fleetId);
       setOffersInTabOnly(false);
-      router.push({
-        pathname: '/driver/order/[id]' as any,
-        params: { id: offer.id },
-      });
     } finally {
       setOfferBusy(false);
     }
@@ -531,9 +526,37 @@ export default function DriverPanelScreen() {
             <Ionicons name="time-outline" size={18} color={theme.colors.warning} />
             <Text style={styles.infoText}>
               Termo assinado. Seu cadastro está em análise. Quando aprovarmos, você liga o online e
-              aceita corridas.
+              aceita corridas. Se o HQ já aprovou, toque em “Atualizar status”.
             </Text>
           </View>
+          <Button
+            title="Atualizar status"
+            onPress={() => {
+              void (async () => {
+                setLoading(true);
+                try {
+                  const next = await pullDriverStatusFromHq(app);
+                  setApp(next);
+                  if (next.status === 'approved') {
+                    Alert.alert('Aprovado', 'Cadastro liberado. Você já pode ficar online.');
+                    await refresh();
+                    return;
+                  }
+                  if (next.status === 'rejected') {
+                    Alert.alert('Recusado', 'Este cadastro foi recusado no painel.');
+                    return;
+                  }
+                  Alert.alert(
+                    'Ainda em análise',
+                    'A nuvem ainda marca como pendente. Confirme no HQ se o e-mail é o mesmo deste aparelho e toque de novo.'
+                  );
+                } finally {
+                  setLoading(false);
+                }
+              })();
+            }}
+            style={{ marginTop: theme.spacing.md }}
+          />
           <DriverTermsPanelSection app={app} />
           <Button
             title="Sair / trocar conta"
@@ -609,7 +632,11 @@ export default function DriverPanelScreen() {
             >
               <Text style={styles.heroMeta}>
                 {app.vehicleType || app.vehicle} ·{' '}
-                {online ? 'Online — recebendo corridas' : 'Offline'}
+                {online
+                  ? gpsStatus === 'denied' || gpsStatus === 'unavailable'
+                    ? 'Online — cliente não vê seu GPS'
+                    : 'Online — recebendo corridas'
+                  : 'Offline'}
                 {' · '}
                 <Text style={styles.heroMetaLink}>trocar veículo</Text>
               </Text>
@@ -625,6 +652,8 @@ export default function DriverPanelScreen() {
             />
           </View>
         </View>
+
+        <DriverGpsBanner status={online ? gpsStatus : 'idle'} />
 
         <FleetStatusChip online={fleetOnline} persistence={fleetPersistence} />
 

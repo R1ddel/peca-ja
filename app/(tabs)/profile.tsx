@@ -39,6 +39,11 @@ import {
 import { getBusinessById } from '@/data/businesses';
 import { getBusinessLogoSource } from '@/utils/businessLogos';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useHomeCatalogLayout } from '@/hooks/useHomeCatalogLayout';
+import {
+  HOME_CATALOG_LAYOUT_LABELS,
+  type HomeCatalogLayout,
+} from '@/utils/homeCatalogLayout';
 import { confirmReloadApp, reloadApp } from '@/utils/reloadApp';
 import {
   abandonMerchantApplication,
@@ -58,6 +63,8 @@ import {
   DemoLocationId,
   getDemoLocationIdSync,
   hydrateDemoLocation,
+  isDemoCityAllowed,
+  isSharedPublicWeb,
   setDemoLocation,
 } from '@/utils/demoLocation';
 
@@ -69,6 +76,7 @@ export default function ProfileScreen() {
   useRequireAuth();
   const { user, logout, updateProfile, cloudAuth } = useAuth();
   const { myOrders } = useOrders();
+  const { layout: homeLayout, setHomeCatalogLayout } = useHomeCatalogLayout();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
@@ -78,6 +86,8 @@ export default function ProfileScreen() {
   const [photoLoading, setPhotoLoading] = useState(false);
   const [coverLoading, setCoverLoading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(false);
+  /** Alert.alert com botões falha no web / alguns Android — menu próprio. */
+  const [photoMenu, setPhotoMenu] = useState<'profile' | 'cover' | null>(null);
   const [claimed, setClaimed] = useState<string[]>([]);
   const [availablePoints, setAvailablePoints] = useState(0);
   const [bonusPoints, setBonusPoints] = useState(0);
@@ -276,23 +286,11 @@ export default function ProfileScreen() {
 
   function openPhotoOptions() {
     setPhotoPreview(false);
-    Alert.alert('Foto de perfil', 'Como você quer adicionar a foto?', [
-      { text: 'Galeria', onPress: () => pickFromGallery() },
-      { text: 'Câmera', onPress: () => pickFromCamera() },
-      ...(user?.photoUrl
-        ? [
-            {
-              text: 'Remover foto',
-              style: 'destructive' as const,
-              onPress: () => removePhoto(),
-            },
-          ]
-        : []),
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+    setPhotoMenu('profile');
   }
 
   async function pickFromGallery() {
+    setPhotoMenu(null);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permissão necessária', 'Autorize o acesso às fotos para continuar.');
@@ -303,8 +301,8 @@ export default function ProfileScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
+        // allowsEditing trava o retorno em vários Android/Expo Go
+        allowsEditing: false,
         quality: 0.7,
       });
 
@@ -319,6 +317,7 @@ export default function ProfileScreen() {
   }
 
   async function pickFromCamera() {
+    setPhotoMenu(null);
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permissão necessária', 'Autorize o uso da câmera para continuar.');
@@ -328,8 +327,7 @@ export default function ProfileScreen() {
     setPhotoLoading(true);
     try {
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 0.7,
       });
 
@@ -344,27 +342,16 @@ export default function ProfileScreen() {
   }
 
   async function removePhoto() {
+    setPhotoMenu(null);
     await updateProfile({ photoUrl: null });
   }
 
   function openCoverOptions() {
-    Alert.alert('Foto de capa', 'Escolha uma imagem para o fundo do perfil', [
-      { text: 'Galeria', onPress: () => pickCoverFromGallery() },
-      { text: 'Câmera', onPress: () => pickCoverFromCamera() },
-      ...(user?.coverUrl
-        ? [
-            {
-              text: 'Usar capa padrão',
-              style: 'destructive' as const,
-              onPress: () => removeCover(),
-            },
-          ]
-        : []),
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+    setPhotoMenu('cover');
   }
 
   async function pickCoverFromGallery() {
+    setPhotoMenu(null);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permissão necessária', 'Autorize o acesso às fotos para continuar.');
@@ -375,8 +362,7 @@ export default function ProfileScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [16, 9],
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -391,6 +377,7 @@ export default function ProfileScreen() {
   }
 
   async function pickCoverFromCamera() {
+    setPhotoMenu(null);
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Permissão necessária', 'Autorize o uso da câmera para continuar.');
@@ -400,8 +387,7 @@ export default function ProfileScreen() {
     setCoverLoading(true);
     try {
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [16, 9],
+        allowsEditing: false,
         quality: 0.8,
       });
 
@@ -416,6 +402,7 @@ export default function ProfileScreen() {
   }
 
   async function removeCover() {
+    setPhotoMenu(null);
     await updateProfile({ coverUrl: null });
   }
 
@@ -789,6 +776,37 @@ export default function ProfileScreen() {
       </FadeInUp>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Layout da home</Text>
+        <Text style={styles.sectionSub}>
+          Vitrine = destaque + categorias (foto de referência). Clássico = layout anterior. A troca
+          vale na hora e fica salva neste aparelho.
+        </Text>
+        <View style={styles.layoutRow}>
+          {(['vitrine', 'classic'] as HomeCatalogLayout[]).map((id) => {
+            const on = homeLayout === id;
+            return (
+              <TouchableOpacity
+                key={id}
+                style={[styles.layoutChip, on && styles.layoutChipOn]}
+                activeOpacity={0.85}
+                onPress={() => void setHomeCatalogLayout(id)}
+              >
+                <Ionicons
+                  name={id === 'vitrine' ? 'grid-outline' : 'list-outline'}
+                  size={16}
+                  color={on ? theme.colors.white : theme.colors.primary}
+                />
+                <Text style={[styles.layoutChipText, on && styles.layoutChipTextOn]}>
+                  {id === 'vitrine' ? 'Vitrine' : 'Clássico'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.layoutHint}>{HOME_CATALOG_LAYOUT_LABELS[homeLayout]}</Text>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Conta</Text>
         <MenuItem
           icon="heart-outline"
@@ -811,7 +829,7 @@ export default function ProfileScreen() {
         <MenuItem icon="image-outline" label="Alterar foto de capa" onPress={openCoverOptions} />
         <MenuItem
           icon="help-circle-outline"
-          label="Ajuda e suporte"
+          label="Ajuda e suporte · até 24h"
           onPress={() => router.push('/support' as any)}
         />
         <MenuItem
@@ -821,7 +839,7 @@ export default function ProfileScreen() {
         />
       </View>
 
-      {__DEV__ && (
+      {isDemoCityAllowed() && !isSharedPublicWeb() && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Demo de cidade</Text>
           <MenuItem
@@ -874,6 +892,52 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       <Text style={styles.version}>Peça Já · Clube de fidelidade v1</Text>
+
+      <Modal
+        visible={photoMenu != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoMenu(null)}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => setPhotoMenu(null)}>
+          <View style={styles.sheetCard}>
+            <Text style={styles.sheetTitle}>
+              {photoMenu === 'cover' ? 'Foto de capa' : 'Foto de perfil'}
+            </Text>
+            <TouchableOpacity
+              style={styles.sheetBtn}
+              onPress={() =>
+                void (photoMenu === 'cover' ? pickCoverFromGallery() : pickFromGallery())
+              }
+            >
+              <Ionicons name="images-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.sheetBtnText}>Galeria</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetBtn}
+              onPress={() =>
+                void (photoMenu === 'cover' ? pickCoverFromCamera() : pickFromCamera())
+              }
+            >
+              <Ionicons name="camera-outline" size={20} color={theme.colors.primary} />
+              <Text style={styles.sheetBtnText}>Câmera</Text>
+            </TouchableOpacity>
+            {photoMenu === 'profile' && user?.photoUrl ? (
+              <TouchableOpacity style={styles.sheetBtnDanger} onPress={() => void removePhoto()}>
+                <Text style={styles.sheetBtnDangerText}>Remover foto</Text>
+              </TouchableOpacity>
+            ) : null}
+            {photoMenu === 'cover' && user?.coverUrl ? (
+              <TouchableOpacity style={styles.sheetBtnDanger} onPress={() => void removeCover()}>
+                <Text style={styles.sheetBtnDangerText}>Usar capa padrão</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={styles.sheetCancel} onPress={() => setPhotoMenu(null)}>
+              <Text style={styles.sheetCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={photoPreview}
@@ -1283,6 +1347,39 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
     lineHeight: 20,
   },
+  layoutRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  layoutChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.surface,
+  },
+  layoutChipOn: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  layoutChipText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.primary,
+  },
+  layoutChipTextOn: {
+    color: theme.colors.white,
+  },
+  layoutHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1514,6 +1611,59 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing.sm,
+  },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 28,
+    gap: 8,
+  },
+  sheetTitle: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    marginBottom: 8,
+  },
+  sheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: theme.colors.background,
+  },
+  sheetBtnText: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+  },
+  sheetBtnDanger: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  sheetBtnDangerText: {
+    color: theme.colors.error,
+    fontWeight: theme.fontWeight.semibold,
+    fontSize: theme.fontSize.md,
+  },
+  sheetCancel: {
+    marginTop: 4,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    color: theme.colors.textMuted,
+    fontWeight: theme.fontWeight.semibold,
   },
   previewOverlay: {
     flex: 1,

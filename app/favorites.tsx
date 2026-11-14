@@ -13,6 +13,8 @@ import { BackHeader } from '@/components/BackHeader';
 import { BusinessCard } from '@/components/BusinessCard';
 import { useFavorites } from '@/context/FavoritesContext';
 import { getBusinessById, formatPrice } from '@/data/businesses';
+import { getSimulatedCityLabel } from '@/utils/demoLocation';
+import { sameOperatingCity } from '@/utils/operatingCity';
 import { theme } from '@/constants/theme';
 import { customerUnitPrice } from '@/constants/pricing';
 
@@ -23,7 +25,8 @@ export default function FavoritesScreen() {
     () =>
       favBusinessIds
         .map((id) => getBusinessById(id))
-        .filter((b): b is NonNullable<typeof b> => !!b),
+        .filter((b): b is NonNullable<typeof b> => !!b)
+        .filter((b) => sameOperatingCity(b.city, getSimulatedCityLabel())),
     [favBusinessIds]
   );
 
@@ -31,6 +34,7 @@ export default function FavoritesScreen() {
     return dishes
       .map((d) => {
         const business = getBusinessById(d.businessId);
+        if (!business || !sameOperatingCity(business.city, getSimulatedCityLabel())) return null;
         const item = business?.menu.find((m) => m.id === d.itemId);
         if (!business || !item) return null;
         return { business, item };

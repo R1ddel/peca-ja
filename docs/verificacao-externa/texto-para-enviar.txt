@@ -1,0 +1,16 @@
+﻿Telas do Peça Já (web publicada no EAS Hosting).
+
+Como o DNS de expo.app não resolve no ambiente de vocês, seguem capturas das telas principais:
+
+1. Home / feed (Mucugê)
+2. Loja (cardápio)
+3. Produto
+4. Personalização / adicionais
+5. Carrinho
+6. Perfil
+7. HQ / Command Center (login)
+8. Painel do lojista
+9. Painel do entregador
+10. Pedidos
+
+Não há listagem na Google Play / App Store neste momento — o acesso público é web (EAS Hosting). Quando o domínio próprio estiver no ar (fora de expo.app), envio o novo link.

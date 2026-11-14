@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
@@ -25,6 +26,7 @@ import {
 } from '@/utils/driverOps';
 import {
   DRIVER_OFFER_SECONDS,
+  driverCanTakeCity,
   getOfferForDriver,
   offerSecondsLeft,
   queueWaitingCount,
@@ -53,6 +55,7 @@ export default function DriverJobsScreen() {
     fleetOnline,
   } = useOrders();
   const [fleetId, setFleetId] = useState<string | null>(null);
+  const [driverCity, setDriverCity] = useState<string | undefined>();
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [driverPhotoUrl, setDriverPhotoUrl] = useState<string | undefined>();
@@ -66,11 +69,15 @@ export default function DriverJobsScreen() {
   const [nowMs, setNowMs] = useState(Date.now());
 
   const offer = useMemo(
-    () => (fleetId ? getOfferForDriver(orders, fleetId, nowMs) : null),
-    [orders, fleetId, nowMs]
+    () =>
+      fleetId && ready ? getOfferForDriver(orders, fleetId, nowMs, driverCity ?? '') : null,
+    [orders, fleetId, nowMs, driverCity, ready]
   );
   const secondsLeft = offer ? offerSecondsLeft(offer, nowMs) : 0;
-  const waiting = queueWaitingCount(orders, nowMs);
+  const waiting = queueWaitingCount(
+    orders.filter((order) => driverCanTakeCity(driverCity, order.city)),
+    nowMs
+  );
   const activeJobs = useMemo(
     () => (fleetId ? listDriverActive(orders, fleetId) : []),
     [orders, fleetId]
@@ -89,6 +96,7 @@ export default function DriverJobsScreen() {
         }
         const id = driverFleetId(app);
         setFleetId(id);
+        setDriverCity(app.city);
         setDriverName(app.name);
         setDriverPhone(app.phone);
         const pub = driverPublicProfile(app);
@@ -131,6 +139,28 @@ export default function DriverJobsScreen() {
       return () => clearInterval(poll);
     }, [runFairDispatch])
   );
+  async function confirmAccept() {
+    if (!fleetId || !offer) return;
+    setBusy(true);
+    const res = await assignDriverToOrder(offer.id, {
+      id: fleetId,
+      name: driverName,
+      phone: driverPhone,
+      photoUrl: driverPhotoUrl,
+      bio: driverBio,
+      vehicle: driverVehicle,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      Alert.alert('Oferta', res.error);
+      void runFairDispatch();
+      return;
+    }
+    await resetDriverOfferDeclines(fleetId);
+    setHomePopupMuted(false);
+    router.replace('/driver' as any);
+  }
+
   function acceptOffer() {
     if (!fleetId || !offer) return;
     if (!online) {
@@ -144,39 +174,16 @@ export default function DriverJobsScreen() {
       );
       return;
     }
+    if (Platform.OS === 'web') {
+      void confirmAccept();
+      return;
+    }
     Alert.alert(
       'Aceitar oferta',
       `${offer.businessName}\nFrete ${formatPrice(driverEarningsOf(offer))}\n${offer.address}`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Aceitar',
-          onPress: () => {
-            void (async () => {
-              setBusy(true);
-              const res = await assignDriverToOrder(offer.id, {
-                id: fleetId,
-                name: driverName,
-                phone: driverPhone,
-                photoUrl: driverPhotoUrl,
-                bio: driverBio,
-                vehicle: driverVehicle,
-              });
-              setBusy(false);
-              if (!res.ok) {
-                Alert.alert('Oferta', res.error);
-                void runFairDispatch();
-                return;
-              }
-              await resetDriverOfferDeclines(fleetId);
-              setHomePopupMuted(false);
-              router.push({
-                pathname: '/driver/order/[id]' as any,
-                params: { id: offer.id },
-              });
-            })();
-          },
-        },
+        { text: 'Aceitar', onPress: () => void confirmAccept() },
       ]
     );
   }

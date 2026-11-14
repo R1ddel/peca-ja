@@ -18,14 +18,16 @@ import { getStaffSession, staffCan } from '@/utils/merchantTeam';
 import {
   MerchantWallet,
   WALLET_MIN_WITHDRAW,
-  availableBalance,
   canRequestWithdraw,
   getWallet,
+  withdrawableBalance,
   findWalletEntry,
   resolvePixDocument,
   pixKeyTypeLabel,
 } from '@/utils/merchantWallet';
 import { executeMerchantWithdraw, pollWithdrawStatus } from '@/services/merchantWithdraw';
+import { platformLedgerList } from '@/services/platformClient';
+import { getPlatformToken } from '@/services/platformSession';
 import { formatPrice } from '@/data/businesses';
 import { theme } from '@/constants/theme';
 
@@ -43,6 +45,7 @@ function sleep(ms: number) {
 export default function MerchantWithdrawScreen() {
   const { user } = useAuth();
   const [wallet, setWallet] = useState<MerchantWallet | null>(null);
+  const [ledgerBalance, setLedgerBalance] = useState<number | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
@@ -65,6 +68,17 @@ export default function MerchantWithdrawScreen() {
     setAppId(app.id);
     setBusinessId(shop.businessId);
     setWallet(await getWallet(shop.businessId));
+    const token = await getPlatformToken();
+    if (token) {
+      const led = await platformLedgerList('merchant', shop.businessId, token);
+      if (led && led.ok && typeof (led as any).balance === 'number') {
+        setLedgerBalance(Number((led as any).balance));
+      } else {
+        setLedgerBalance(null);
+      }
+    } else {
+      setLedgerBalance(null);
+    }
   }, [user?.email]);
 
   useFocusEffect(
@@ -73,7 +87,7 @@ export default function MerchantWithdrawScreen() {
     }, [refresh])
   );
 
-  const balance = availableBalance(wallet);
+  const balance = withdrawableBalance(wallet, ledgerBalance);
   const document = resolvePixDocument(wallet);
 
   function fillAll() {
@@ -209,7 +223,11 @@ export default function MerchantWithdrawScreen() {
           <Text style={styles.balLabel}>Disponível agora</Text>
           <Text style={styles.balValue}>{formatPrice(balance)}</Text>
           <Text style={styles.balHint}>
-            Mínimo {formatPrice(WALLET_MIN_WITHDRAW)} · 1 saque por dia · Pix real via Mercado Pago
+            Sai da carteira deste aparelho
+            {ledgerBalance != null
+              ? `, no teto da nuvem (${formatPrice(Math.max(0, ledgerBalance))})`
+              : '. Sem nuvem, o servidor pode recusar o Pix'}
+            . Mínimo {formatPrice(WALLET_MIN_WITHDRAW)} · 1 saque por dia
           </Text>
         </View>
 

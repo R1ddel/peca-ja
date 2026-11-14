@@ -10,7 +10,16 @@ import {
   loadShopMarketplaceRecipients,
   mpMarketplacePaymentFields,
   publicSettlementMeta,
+  withCashFeeDebtRecovery,
 } from '@/services/marketplaceSplit';
+import { loadPlatformState } from '@/services/platformStore';
+import { merchantCashFeeDebt } from '@/services/orderLedgerServer';
+import { requirePaymentSession } from '@/services/paymentAuth';
+import {
+  isMerchantPlan,
+  parsePlanApplicationId,
+  registerPlanPayment,
+} from '@/services/planSubscriptionServer';
 
 type Body = {
   orderDraftId?: string;
@@ -27,10 +36,18 @@ type Body = {
   merchantRecipientId?: string;
   driverRecipientId?: string;
   platformRecipientId?: string;
+  /** Cadastro do comerciante (obrigatório na assinatura). */
+  applicationId?: string;
+  plan?: string;
+  token?: string;
 };
 
 export async function POST(request: Request) {
   try {
+    const rawBody = (await request.json().catch(() => ({}))) as Body;
+    const gate = await requirePaymentSession(request, rawBody);
+    if (!gate.ok) return gate.response;
+
     if (!isMercadoPagoConfigured()) {
       return Response.json(
         {
@@ -43,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as Body;
+    const body = rawBody;
     const subtotal = Number(body.subtotal ?? 0);
     if (!body.orderDraftId || !body.businessId || !body.businessName || subtotal <= 0) {
       return Response.json(
@@ -82,12 +99,151 @@ export async function POST(request: Request) {
 
     const firstName = (body.customerName || 'Cliente').trim().split(/\s+/)[0] || 'Cliente';
 
+    // ——— Assinatura: 100% na conta MP da plataforma (sem marketplace/split) ———
+    if (isSubscription) {
+      const applicationId =
+        String(body.applicationId || '').trim() ||
+        parsePlanApplicationId(body.orderDraftId) ||
+        '';
+      if (!applicationId) {
+        return Response.json(
+          {
+            ok: false,
+            code: 'INVALID',
+            message: 'Assinatura sem applicationId. Refaça o pagamento do plano.',
+          },
+          { status: 400 }
+        );
+      }
+      if (!isMerchantPlan(body.plan)) {
+        return Response.json(
+          { ok: false, code: 'INVALID', message: 'Plano da assinatura inválido.' },
+          { status: 400 }
+        );
+      }
+
+      const payment = await mpFetch('/v1/payments', {
+        method: 'POST',
+        headers: {
+          'X-Idempotency-Key': `plan-pix-${applicationId}-${body.orderDraftId}-${Math.round(
+            chargeAmount * 100
+          )}`,
+        },
+        body: JSON.stringify({
+          transaction_amount: Number(chargeAmount.toFixed(2)),
+          description: `Peça Já · Assinatura ${body.businessName}`.slice(0, 230),
+          payment_method_id: 'pix',
+          payer: {
+            email,
+            first_name: firstName,
+          },
+          external_reference: body.orderDraftId,
+          metadata: {
+            order_draft_id: body.orderDraftId,
+            business_id: body.businessId,
+            business_name: body.businessName,
+            application_id: applicationId,
+            plan: body.plan,
+            charged_amount: chargeAmount,
+            purpose: 'subscription',
+            source: 'peca-ja',
+            settlement_mode: 'platform_direct',
+          },
+        }),
+      });
+
+      const tx = payment?.point_of_interaction?.transaction_data ?? {};
+      const copyPaste = String(tx.qr_code || '');
+      if (!copyPaste) {
+        return Response.json(
+          {
+            ok: false,
+            code: 'GATEWAY',
+            message: 'Mercado Pago não retornou o QR Code Pix.',
+          },
+          { status: 502 }
+        );
+      }
+
+      const mpId = String(payment.id);
+      const status = mapMpStatusToPix(payment.status);
+      try {
+        await registerPlanPayment({
+          mpPaymentId: mpId,
+          applicationId,
+          plan: body.plan,
+          amount: chargeAmount,
+          method: 'pix',
+          externalReference: body.orderDraftId,
+          ownerUserId: gate.user?.id,
+          businessName: body.businessName,
+          status: status === 'paid' ? 'paid' : 'pending',
+          paidAt:
+            status === 'paid'
+              ? payment.date_approved || new Date().toISOString()
+              : undefined,
+        });
+      } catch (regErr: any) {
+        console.error('[payments/pix] registerPlanPayment', regErr?.message || regErr);
+      }
+
+      const expiresAt =
+        payment?.date_of_expiration ||
+        new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      return Response.json({
+        ok: true,
+        charge: {
+          id: mpId,
+          status,
+          copyPaste,
+          qrCodeUrl: tx.qr_code_base64
+            ? `data:image/png;base64,${tx.qr_code_base64}`
+            : `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&data=${encodeURIComponent(copyPaste)}`,
+          amount: chargeAmount,
+          split: { ...split, customerTotal: chargeAmount },
+          settlement: {
+            mode: 'platform_direct',
+            merchantPaidViaMp: false,
+            driverViaLedger: false,
+            applicationFee: 0,
+          },
+          expiresAt,
+          createdAt: payment.date_created || new Date().toISOString(),
+          paidAt:
+            payment.status === 'approved'
+              ? payment.date_approved || new Date().toISOString()
+              : undefined,
+          orderDraftId: body.orderDraftId,
+          businessId: body.businessId,
+          businessName: body.businessName,
+          applicationId,
+          plan: body.plan,
+          provider: 'mercadopago' as const,
+          mpPaymentId: mpId,
+          purpose: 'subscription' as const,
+        },
+      });
+    }
+
+    // ——— Pedido: gateway / marketplace (fluxo atual) ———
     const recipients = await loadShopMarketplaceRecipients(body.businessId, {
       merchantCollectorId: body.merchantRecipientId?.trim() || null,
       driverCollectorId: body.driverRecipientId?.trim() || null,
       platformCollectorId: body.platformRecipientId?.trim() || null,
     });
-    const settlement = buildOrderSettlement(split, recipients);
+    let debt = 0;
+    try {
+      const plat = await loadPlatformState();
+      debt = merchantCashFeeDebt(plat, String(body.businessId));
+    } catch {
+      debt = 0;
+    }
+    const settlement = withCashFeeDebtRecovery(
+      buildOrderSettlement(split, recipients),
+      split,
+      debt
+    );
     const settlementPublic = publicSettlementMeta(settlement);
     const mpExtra = mpMarketplacePaymentFields(settlement);
     const sellerToken =
@@ -103,9 +259,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         transaction_amount: Number(chargeAmount.toFixed(2)),
-        description: isSubscription
-          ? `Peça Já · Assinatura ${body.businessName}`.slice(0, 230)
-          : `Peça Já · ${body.businessName}`.slice(0, 230),
+        description: `Peça Já · ${body.businessName}`.slice(0, 230),
         payment_method_id: 'pix',
         payer: {
           email,
@@ -122,10 +276,11 @@ export async function POST(request: Request) {
           driver_amount: split.driverAmount,
           real_total: split.customerTotal,
           charged_amount: chargeAmount,
-          purpose: isSubscription ? 'subscription' : 'order',
+          purpose: 'order',
           source: 'peca-ja',
           settlement_mode: settlement.mode,
           settlement_application_fee: settlement.applicationFee,
+          cash_fee_debt_recovery: settlement.cashFeeDebtRecovery ?? 0,
           merchant_paid_via_mp: settlement.merchantPaidViaMp,
           driver_via_ledger: settlement.driverViaLedger,
         },

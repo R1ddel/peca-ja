@@ -17,6 +17,7 @@ import { useOrders } from '@/context/OrdersContext';
 import { DriverApplication, resolveDriverApplication } from '@/utils/partners';
 import { driverFleetId, listDriverActive } from '@/utils/driverOps';
 import { usePublishDriverLocation } from '@/hooks/usePublishDriverLocation';
+import { DriverGpsBanner } from '@/components/DriverGpsBanner';
 import { theme } from '@/constants/theme';
 
 const ACCENT = '#7C3AED';
@@ -44,13 +45,14 @@ export default function DriverActiveScreen() {
     [orders, fleetId]
   );
 
-  usePublishDriverLocation(
+  const gpsStatus = usePublishDriverLocation(
     app && fleetId
       ? {
           fleetId,
           applicationId: app.id,
           name: app.name,
           phone: app.phone,
+          city: app.city,
         }
       : null,
     list.length > 0
@@ -70,6 +72,7 @@ export default function DriverActiveScreen() {
     <MobileShell style={styles.screen}>
       <BackHeader title="Corridas ativas" fallbackHref="/driver" />
       <ScrollView contentContainerStyle={styles.list}>
+        <DriverGpsBanner status={list.length > 0 ? gpsStatus : 'idle'} />
         <ActiveRunsBlock
           variant="driver"
           orders={list}

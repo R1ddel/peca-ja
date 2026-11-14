@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Peça Já — posts de pré-lançamento (Instagram)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --green: #00a86b;
+    --green-dark: #007a4d;
+    --green-light: #e8f8f0;
+    --green-muted: #b8e6d0;
+    --forest: #1e3a2f;
+    --forest-deep: #132820;
+    --gold: #ffb800;
+    --gold-soft: #fff8e6;
+    --bg: #f5faf7;
+    --ink: #1a2e24;
+    --ink-2: #6b7b72;
+    --border: #e2ede7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #cfd9d3;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 48px;
+    padding: 48px 0 96px;
+  }
+  .label { font: 600 18px Inter, sans-serif; color: #2a3d33; width: 1080px; }
+  .art {
+    position: relative;
+    overflow: hidden;
+    flex: none;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  }
+  .feed { width: 1080px; height: 1350px; }
+  .story { width: 1080px; height: 1920px; }
+  .h { font-family: Poppins, Inter, sans-serif; letter-spacing: -0.03em; }
+
+  /* ---------- marca ---------- */
+  .brand { display: flex; align-items: center; gap: 18px; }
+  .brand .bag {
+    width: 76px; height: 76px; border-radius: 50%;
+    background: #fff; display: grid; place-items: center;
+    box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.14);
+  }
+  .brand .bag svg { width: 40px; height: 40px; }
+  .brand .name { font: 800 38px/1 Poppins, sans-serif; letter-spacing: -0.02em; }
+  .brand .name small {
+    display: block; font: 700 14px/1 Inter, sans-serif; letter-spacing: 0.32em;
+    margin-top: 6px; opacity: 0.8;
+  }
+  .on-dark .brand .name { color: #fff; }
+  .on-light .brand .name { color: var(--forest); }
+  .on-light .brand .bag { background: var(--green-light); box-shadow: 0 0 0 10px rgba(0, 168, 107, 0.1); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 22px; border-radius: 999px;
+    font: 700 22px/1 Inter, sans-serif;
+  }
+  .pill.gold { background: var(--gold); color: var(--forest); }
+  .pill.glass { background: rgba(255, 255, 255, 0.12); color: #fff; border: 1.5px solid rgba(255, 255, 255, 0.25); }
+  .pill.mint { background: var(--green-light); color: var(--green-dark); }
+  .pill .dot { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+
+  .footer-bar {
+    position: absolute; left: 72px; right: 72px; bottom: 64px;
+    display: flex; justify-content: space-between; align-items: center;
+    font: 600 22px Inter, sans-serif;
+  }
+  .on-dark .footer-bar { color: rgba(255, 255, 255, 0.75); }
+  .on-light .footer-bar { color: var(--ink-2); }
+
+  /* ---------- fundos ---------- */
+  .bg-forest {
+    background:
+      radial-gradient(900px 700px at 85% 10%, rgba(0, 168, 107, 0.35), transparent 60%),
+      radial-gradient(700px 600px at 0% 100%, rgba(255, 184, 0, 0.12), transparent 60%),
+      var(--forest);
+  }
+  .bg-green {
+    background:
+      radial-gradient(800px 600px at 100% 0%, rgba(255, 255, 255, 0.18), transparent 60%),
+      linear-gradient(160deg, #00b874, var(--green-dark));
+  }
+  .bg-light {
+    background:
+      radial-gradient(900px 700px at 100% 0%, rgba(0, 168, 107, 0.12), transparent 60%),
+      var(--bg);
+  }
+  .grid-dots::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.09) 2px, transparent 2px);
+    background-size: 36px 36px;
+    pointer-events: none;
+  }
+  .on-light.grid-dots::before { background-image: radial-gradient(rgba(0, 122, 77, 0.08) 2px, transparent 2px); }
+
+  /* rota pontilhada: assinatura visual (loja → sua casa) */
+  .route { position: absolute; pointer-events: none; }
+  .route path { fill: none; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 2 18; }
+
+  /* ---------- celular ---------- */
+  .phone {
+    position: absolute;
+    width: var(--pw, 470px);
+    aspect-ratio: 9 / 19.2;
+    border-radius: calc(var(--pw, 470px) * 0.14);
+    background: #0d1712;
+    padding: calc(var(--pw, 470px) * 0.03);
+    box-shadow:
+      0 0 0 3px #2c3d34,
+      0 50px 90px rgba(5, 25, 15, 0.45),
+      0 18px 30px rgba(5, 25, 15, 0.25);
+  }
+  .phone .screen {
+    width: 100%; height: 100%;
+    border-radius: calc(var(--pw, 470px) * 0.115);
+    overflow: hidden;
+    background: var(--bg);
+    position: relative;
+    display: flex; flex-direction: column;
+  }
+  .phone .status {
+    flex: none;
+    height: calc(var(--pw, 470px) * 0.11);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 calc(var(--pw, 470px) * 0.085);
+    font: 700 calc(var(--pw, 470px) * 0.034px) Inter, sans-serif;
+    font-size: calc(var(--pw, 470px) * 0.034);
+    color: var(--ink);
+    background: var(--bg);
+    position: relative;
+  }
+  .phone .status::after {
+    content: ""; position: absolute; left: 50%; top: 28%;
+    width: 30%; height: 38%; transform: translateX(-50%);
+    background: #0d1712; border-radius: 999px;
+  }
+  .phone .status .icons { display: flex; gap: 6px; align-items: center; }
+  .phone .status .icons i { display: block; width: 18px; height: 10px; border-radius: 2px; background: var(--ink); }
+  .phone .status .icons i:first-child { width: 14px; height: 10px; clip-path: polygon(0 100%, 100% 0, 100% 100%); border-radius: 0; }
+  .phone .shot { position: relative; width: 100%; flex: 1; overflow: hidden; }
+  .phone .shot img { width: 100%; display: block; }
+  .phone.green-status .status { background: #00a76a; color: #fff; }
+  .phone.green-status .status .icons i { background: #fff; }
+
+  /* troca "84 comércios abertos" (dado de demonstração) por texto neutro */
+  .patch-home {
+    position: absolute; left: 3.6%; top: 28.3%; width: 70%; height: 2.6%;
+    background: #f5faf7; color: #6b7b72;
+    font-size: calc(var(--pw, 470px) * 0.94 * 13 / 390);
+    display: flex; align-items: center;
+    font-family: Inter, sans-serif;
+  }
+
+  /* ---------- cartões de UI (mesmos tokens do app) ---------- */
+  .ui-card {
+    background: #fff; border-radius: 28px; padding: 28px 30px;
+    box-shadow: 0 24px 50px rgba(10, 40, 25, 0.16);
+    font-family: Inter, sans-serif;
+  }
+  .ui-title { font: 800 30px/1.15 Inter, sans-serif; color: var(--ink); }
+  .ui-sub { font: 500 21px/1.35 Inter, sans-serif; color: var(--ink-2); }
+  .ui-price { font: 800 34px/1 Inter, sans-serif; color: var(--green); }
+  .ui-btn {
+    background: var(--green); color: #fff; border-radius: 18px;
+    padding: 20px; text-align: center; font: 700 24px/1 Inter, sans-serif;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #fff; border: 2px solid var(--border); color: var(--ink);
+    border-radius: 999px; padding: 12px 20px; font: 600 21px/1 Inter, sans-serif;
+  }
+  .chip.on { background: var(--green); border-color: var(--green); color: #fff; }
+
+  .step-num {
+    width: 64px; height: 64px; border-radius: 50%; flex: none;
+    display: grid; place-items: center;
+    font: 800 30px/1 Poppins, sans-serif;
+  }
+
+  /* timeline de status (orderStatusConfig) */
+  .tl { display: flex; flex-direction: column; gap: 0; }
+  .tl-row { display: flex; gap: 26px; align-items: stretch; }
+  .tl-rail { display: flex; flex-direction: column; align-items: center; width: 72px; flex: none; }
+  .tl-ico { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .tl-ico svg { width: 36px; height: 36px; }
+  .tl-line { width: 5px; flex: 1; min-height: 34px; background: rgba(255, 255, 255, 0.35); border-radius: 3px; margin: 6px 0; }
+  .tl-text { padding: 10px 0 34px; }
+  .tl-text b { display: block; font: 700 32px/1.1 Inter, sans-serif; color: #fff; }
+  .tl-text span { display: block; font: 500 22px/1.35 Inter, sans-serif; color: rgba(255, 255, 255, 0.78); margin-top: 6px; }
+
+  .code-box { display: flex; gap: 14px; }
+  .code-box span {
+    width: 74px; height: 92px; border-radius: 18px; background: var(--green-light);
+    display: grid; place-items: center; font: 800 46px/1 Poppins, sans-serif; color: var(--green-dark);
+  }
+
+  .sticker {
+    position: absolute; border-radius: 999px; padding: 18px 30px;
+    font: 800 28px/1 Poppins, sans-serif; letter-spacing: 0.02em;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.18);
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="bag" viewBox="0 0 24 24"><path fill="#00a86b" d="M8 7V6a4 4 0 0 1 8 0v1h2.2c.7 0 1.2.5 1.3 1.2l.9 11c.1 1-.7 1.8-1.7 1.8H5.3c-1 0-1.8-.8-1.7-1.8l.9-11C4.6 7.5 5.1 7 5.8 7H8Zm2 0h4V6a2 2 0 0 0-4 0v1Zm-1.2 4.2a.9.9 0 0 0-.8 1.3 4.5 4.5 0 0 0 8 0 .9.9 0 1 0-1.6-.8 2.7 2.7 0 0 1-4.8 0 .9.9 0 0 0-.8-.5Z"/></symbol>
+    <symbol id="i-time" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m6 12.5 4 4 8-9"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path fill="#fff" d="M12 2s5 4.4 5 10.2A5 5 0 0 1 12 17a5 5 0 0 1-5-4.8c0-2.1 1-3.6 1-3.6s.4 2.4 2 2.4C11.5 11 9.6 6.1 12 2Zm0 12.5a2.2 2.2 0 0 0 2.2-2.2c0-1.4-2.2-3.3-2.2-3.3s-2.2 1.9-2.2 3.3A2.2 2.2 0 0 0 12 14.5ZM7 19h10v2H7z"/></symbol>
+    <symbol id="i-bike" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M5.5 18.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm13 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM5.5 15.5 9 8h4l5.5 7.5M9 8h-2m6 0 1.5-2.5H17"/></symbol>
+    <symbol id="i-done" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m2.5 12.5 4 4 8-9m-2 9 1 0 8-9"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path fill="#00a86b" d="M12 2a7 7 0 0 1 7 7c0 5.2-7 13-7 13S5 14.2 5 9a7 7 0 0 1 7-7Zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></symbol>
+    <symbol id="i-pix" viewBox="0 0 24 24"><path fill="#00a86b" d="M12 2.6c.7 0 1.4.3 1.9.8l3 3h-1.2c-.7 0-1.4.3-1.9.8L12 9.1 10.2 7.2c-.5-.5-1.2-.8-1.9-.8H7.1l3-3c.5-.5 1.2-.8 1.9-.8Zm-6.6 5h2.9c.4 0 .8.2 1.1.4l1.9 2c.4.4 1 .4 1.4 0l1.9-2c.3-.3.7-.4 1.1-.4h2.9l2 2c1 1 1 2.8 0 3.8l-2 2h-2.9c-.4 0-.8-.2-1.1-.4l-1.9-2c-.4-.4-1-.4-1.4 0l-1.9 2c-.3.3-.7.4-1.1.4H5.4l-2-2c-1-1-1-2.8 0-3.8l2-2Zm1.7 10h1.2c.7 0 1.4-.3 1.9-.8L12 15l1.8 1.8c.5.5 1.2.8 1.9.8h1.2l-3 3c-1 1-2.8 1-3.8 0l-3-3Z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ================= FEED 1 · NOVIDADE CHEGANDO ================= -->
+<div class="label">Feed 01 · Teaser “Novidade chegando”</div>
+<div class="art feed bg-forest on-dark grid-dots" id="feed-01">
+  <div style="position:absolute;left:72px;top:72px;"><span class="pill glass"><span class="dot" style="color:var(--gold)"></span>Mucugê · BA</span></div>
+  <div style="position:absolute;right:72px;top:72px;"><span class="pill gold">EM BREVE</span></div>
+
+  <svg class="route" style="left:0;top:0" width="1080" height="1350">
+    <path d="M -20 1010 C 220 900, 260 700, 540 640 S 900 520, 1110 300" stroke="rgba(255,184,0,.55)" />
+  </svg>
+
+  <div style="position:absolute;left:0;right:0;top:300px;text-align:center;">
+    <div style="width:260px;height:260px;margin:0 auto;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 0 0 26px rgba(255,255,255,.08),0 0 0 54px rgba(255,255,255,.04);">
+      <svg width="140" height="140"><use href="#bag" /></svg>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:72px;right:72px;top:690px;text-align:center;color:#fff">
+    <div class="h" style="font-weight:900;font-size:132px;line-height:.92;">Novidade</div>
+    <div class="h" style="font-weight:900;font-size:132px;line-height:.92;color:var(--gold)">chegando.</div>
+    <div style="margin-top:40px;font:500 34px/1.4 Inter,sans-serif;color:rgba(255,255,255,.85)">
+      O delivery de Mucugê vai caber<br />no seu bolso. Fica de olho.
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Ative as notificações 🔔</span>
+  </div>
+</div>
+
+<!-- ================= FEED 2 · TELA INICIAL REAL ================= -->
+<div class="label">Feed 02 · “Mucugê inteira num app só” (tela inicial real)</div>
+<div class="art feed bg-light on-light grid-dots" id="feed-02">
+  <div style="position:absolute;left:72px;top:80px;width:470px;">
+    <span class="pill mint">Primeira espiada 👀</span>
+    <div class="h" style="margin-top:34px;font-weight:800;font-size:84px;line-height:.98;color:var(--forest)">Mucugê inteira num app só.</div>
+    <div style="margin-top:30px;font:500 28px/1.45 Inter,sans-serif;color:var(--ink-2)">Restaurante, mercado, farmácia, padaria e bebidas — no mapa, perto de você.</div>
+  </div>
+
+  <div style="position:absolute;left:72px;top:720px;display:flex;flex-direction:column;gap:18px;align-items:flex-start">
+    <span class="chip on">⚡ Abertos agora</span>
+    <span class="chip">📍 Até 2 km</span>
+    <span class="chip">🎁 Entrega grátis</span>
+    <span class="chip">⭐ 4.5+</span>
+  </div>
+
+  <div class="phone" style="--pw:440px;right:70px;top:150px;transform:rotate(4deg)">
+    <div class="screen">
+      <div class="status"><span>9:41</span><span class="icons"><i></i><i></i></span></div>
+      <div class="shot"><img src="telas/home.png" /><div class="patch-home" style="--pw:440px">Comércios de Mucugê perto de você</div></div>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Em breve</span>
+  </div>
+</div>
+
+<!-- ================= FEED 3 · ESCOLHE, PIX, CÓDIGO ================= -->
+<div class="label">Feed 03 · “Pediu, pagou, chegou” (fluxo real do app)</div>
+<div class="art feed bg-green on-dark grid-dots" id="feed-03">
+  <div style="position:absolute;left:72px;right:72px;top:80px;color:#fff">
+    <span class="pill glass">Como vai funcionar</span>
+    <div class="h" style="margin-top:30px;font-weight:900;font-size:96px;line-height:.95">Escolhe. Paga.<br /><span style="color:var(--gold)">Chega.</span></div>
+  </div>
+
+  <div style="position:absolute;left:72px;right:72px;top:520px;display:flex;flex-direction:column;gap:34px">
+    <div class="ui-card" style="display:flex;gap:26px;align-items:center">
+      <div class="step-num" style="background:var(--green-light);color:var(--green-dark)">1</div>
+      <div style="flex:1">
+        <div class="ui-sub" style="font-weight:700;color:var(--green-dark);letter-spacing:.06em;font-size:18px">ESCOLHE NO CARDÁPIO</div>
+        <div class="ui-title" style="margin-top:6px">PF Executivo</div>
+        <div class="ui-sub">Arroz, feijão, carne, salada e batata frita</div>
+      </div>
+      <div class="ui-price">R$ 30,90</div>
+    </div>
+
+    <div class="ui-card" style="display:flex;gap:26px;align-items:center">
+      <div class="step-num" style="background:var(--green-light);color:var(--green-dark)">2</div>
+      <div style="flex:1">
+        <div class="ui-sub" style="font-weight:700;color:var(--green-dark);letter-spacing:.06em;font-size:18px">PAGA NO PIX</div>
+        <div class="ui-title" style="margin-top:6px">QR na hora, direto no app</div>
+        <div class="ui-sub">O pedido entra em preparo assim que o Pix confirma</div>
+      </div>
+      <svg width="70" height="70"><use href="#i-pix" /></svg>
+    </div>
+
+    <div class="ui-card" style="display:flex;gap:26px;align-items:center">
+      <div class="step-num" style="background:var(--gold);color:var(--forest)">3</div>
+      <div style="flex:1">
+        <div class="ui-sub" style="font-weight:700;color:#b07f00;letter-spacing:.06em;font-size:18px">RECEBE COM CÓDIGO</div>
+        <div class="ui-title" style="margin-top:6px">Na porta, mostra o código</div>
+        <div class="ui-sub">Seu pedido só é entregue pra você</div>
+      </div>
+      <div class="code-box" style="gap:8px"><span style="width:52px;height:68px;font-size:34px">4</span><span style="width:52px;height:68px;font-size:34px">8</span><span style="width:52px;height:68px;font-size:34px">2</span></div>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Em breve em Mucugê</span>
+  </div>
+</div>
+
+<!-- ================= FEED 4 · ACOMPANHE O PEDIDO ================= -->
+<div class="label">Feed 04 · “Sem ‘já saiu?’ no WhatsApp” (status reais do pedido)</div>
+<div class="art feed bg-forest on-dark grid-dots" id="feed-04">
+  <div style="position:absolute;left:72px;right:72px;top:80px;color:#fff">
+    <span class="pill glass">Novidade chegando</span>
+    <div class="h" style="margin-top:30px;font-weight:900;font-size:84px;line-height:.98">Chega de<br />“moço, já saiu?”</div>
+    <div style="margin-top:22px;font:500 30px/1.4 Inter,sans-serif;color:rgba(255,255,255,.8)">No Peça Já você vê cada etapa do pedido.</div>
+  </div>
+
+  <div class="tl" style="position:absolute;left:72px;right:72px;top:560px">
+    <div class="tl-row"><div class="tl-rail"><div class="tl-ico" style="background:#f59e0b"><svg><use href="#i-time"/></svg></div><div class="tl-line"></div></div><div class="tl-text"><b>Pedido recebido</b><span>A loja já viu o seu pedido</span></div></div>
+    <div class="tl-row"><div class="tl-rail"><div class="tl-ico" style="background:#3b82f6"><svg><use href="#i-check"/></svg></div><div class="tl-line"></div></div><div class="tl-text"><b>Confirmado</b><span>Vai começar o preparo</span></div></div>
+    <div class="tl-row"><div class="tl-rail"><div class="tl-ico" style="background:#ff6b35"><svg><use href="#i-flame"/></svg></div><div class="tl-line"></div></div><div class="tl-text"><b>Em preparo</b><span>Feito na hora</span></div></div>
+    <div class="tl-row"><div class="tl-rail"><div class="tl-ico" style="background:#8b5cf6"><svg><use href="#i-bike"/></svg></div><div class="tl-line"></div></div><div class="tl-text"><b>Saiu para entrega</b><span>A caminho — mostre seu código</span></div></div>
+    <div class="tl-row"><div class="tl-rail"><div class="tl-ico" style="background:#00a86b;box-shadow:0 0 0 10px rgba(0,168,107,.25)"><svg><use href="#i-done"/></svg></div></div><div class="tl-text" style="padding-bottom:0"><b style="color:var(--gold)">Entregue</b><span>Bom apetite, Mucugê 💚</span></div></div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Em breve</span>
+  </div>
+</div>
+
+<!-- ================= FEED 5 · CARRINHO ESPERANDO ================= -->
+<div class="label">Feed 05 · “Seu carrinho já está te esperando” (tela real do carrinho)</div>
+<div class="art feed bg-light on-light grid-dots" id="feed-05">
+  <div style="position:absolute;left:72px;right:72px;top:80px;text-align:center">
+    <div class="h" style="font-weight:900;font-size:86px;line-height:.98;color:var(--forest)">Seu carrinho já tá<br />te <span style="color:var(--green)">esperando.</span></div>
+  </div>
+
+  <div class="phone" style="--pw:400px;left:340px;top:300px">
+    <div class="screen">
+      <div class="status"><span>9:41</span><span class="icons"><i></i><i></i></span></div>
+      <div class="shot"><img src="telas/carrinho.png" /></div>
+    </div>
+  </div>
+
+  <div class="sticker" style="background:var(--gold);color:var(--forest);left:110px;top:640px;transform:rotate(-8deg)">Vazio… por enquanto 😏</div>
+  <div class="sticker" style="background:var(--forest);color:#fff;right:96px;top:1010px;transform:rotate(6deg)">Abre em breve</div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Mucugê · BA</span>
+  </div>
+</div>
+
+<!-- ================= FEED 6 · LOJISTA ================= -->
+<div class="label">Feed 06 · Lojista “O preço do cardápio é seu” (tela real Seja parceiro)</div>
+<div class="art feed bg-forest on-dark grid-dots" id="feed-06">
+  <div style="position:absolute;left:72px;top:80px;width:500px;color:#fff">
+    <span class="pill gold">Para lojistas</span>
+    <div class="h" style="margin-top:32px;font-weight:900;font-size:80px;line-height:.98">O preço do cardápio <span style="color:var(--gold)">é seu.</span></div>
+    <div style="margin-top:28px;font:500 27px/1.45 Inter,sans-serif;color:rgba(255,255,255,.82)">Você recebe o valor que cadastrou. Sem comissão de 20–30% em cima do prato.</div>
+
+    <div style="margin-top:44px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;gap:16px;align-items:center;font:600 26px Inter,sans-serif"><span class="step-num" style="width:48px;height:48px;font-size:22px;background:var(--green);color:#fff">✓</span>Cadastro pelo celular</div>
+      <div style="display:flex;gap:16px;align-items:center;font:600 26px Inter,sans-serif"><span class="step-num" style="width:48px;height:48px;font-size:22px;background:var(--green);color:#fff">✓</span>Cliente paga no Pix</div>
+      <div style="display:flex;gap:16px;align-items:center;font:600 26px Inter,sans-serif"><span class="step-num" style="width:48px;height:48px;font-size:22px;background:var(--green);color:#fff">✓</span>Painel de pedidos da loja</div>
+    </div>
+  </div>
+
+  <div class="phone" style="--pw:380px;right:56px;top:240px;transform:rotate(-4deg)">
+    <div class="screen">
+      <div class="status"><span>9:41</span><span class="icons"><i></i><i></i></span></div>
+      <div class="shot"><img src="telas/parceiro.png" /></div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:72px;right:72px;bottom:150px;background:var(--gold);color:var(--forest);border-radius:26px;padding:26px 32px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font:800 30px/1.2 Poppins,sans-serif">1º mês do plano Já na Rua incluso<br /><span style="font:600 22px Inter,sans-serif">para as lojas do lançamento</span></div>
+    <div style="font:800 26px Inter,sans-serif;background:var(--forest);color:#fff;border-radius:16px;padding:16px 22px">Chama no direct</div>
+  </div>
+
+  <div class="footer-bar">
+    <div class="brand"><div class="bag" style="width:56px;height:56px"><svg style="width:30px;height:30px"><use href="#bag" /></svg></div><div class="name" style="font-size:30px">Peça Já</div></div>
+    <span>Mucugê · BA</span>
+  </div>
+</div>
+
+<!-- ================= STORY 1 · CARREGANDO ================= -->
+<div class="label">Story 01 · “Carregando…” (teaser)</div>
+<div class="art story bg-forest on-dark grid-dots" id="story-01">
+  <svg class="route" style="left:0;top:0" width="1080" height="1920">
+    <path d="M -20 1500 C 300 1400, 200 1100, 540 1000 S 900 700, 1110 560" stroke="rgba(255,184,0,.5)" />
+  </svg>
+  <div style="position:absolute;left:0;right:0;top:300px;text-align:center;color:#fff">
+    <div style="width:240px;height:240px;margin:0 auto;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 0 0 26px rgba(255,255,255,.08),0 0 0 54px rgba(255,255,255,.04)">
+      <svg width="130" height="130"><use href="#bag" /></svg>
+    </div>
+    <div class="h" style="margin-top:110px;font-weight:900;font-size:150px;line-height:.9">Novidade<br /><span style="color:var(--gold)">chegando</span></div>
+    <div style="margin:70px auto 0;width:760px">
+      <div style="display:flex;justify-content:space-between;font:700 30px Inter,sans-serif;color:rgba(255,255,255,.85)"><span>Carregando o Peça Já…</span><span style="color:var(--gold)">87%</span></div>
+      <div style="margin-top:20px;height:28px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden"><div style="width:87%;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green),var(--gold))"></div></div>
+    </div>
+    <div style="margin-top:80px;font:500 38px/1.4 Inter,sans-serif;color:rgba(255,255,255,.85)">Delivery de Mucugê,<br />feito por gente daqui.</div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:200px;text-align:center"><span class="pill gold" style="font-size:30px;padding:20px 34px">Ativa o lembrete 🔔</span></div>
+</div>
+
+<!-- ================= STORY 2 · ENQUETE ================= -->
+<div class="label">Story 02 · Enquete (cole o sticker de enquete na área tracejada)</div>
+<div class="art story bg-light on-light grid-dots" id="story-02">
+  <div style="position:absolute;left:80px;right:80px;top:170px">
+    <span class="pill mint" style="font-size:28px">Mucugê, responde aí 👇</span>
+    <div class="h" style="margin-top:40px;font-weight:900;font-size:104px;line-height:.95;color:var(--forest)">O que você pediria <span style="color:var(--green)">primeiro?</span></div>
+  </div>
+  <div style="position:absolute;left:120px;right:120px;top:690px;height:300px;border:4px dashed var(--green-muted);border-radius:40px;display:grid;place-items:center;font:600 28px Inter,sans-serif;color:var(--ink-2)">
+    espaço para o sticker de enquete
+  </div>
+  <div class="phone" style="--pw:520px;left:280px;top:1080px;transform:rotate(-3deg)">
+    <div class="screen">
+      <div class="status"><span>9:41</span><span class="icons"><i></i><i></i></span></div>
+      <div class="shot"><img src="telas/home.png" /><div class="patch-home" style="--pw:520px">Comércios de Mucugê perto de você</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= STORY 3 · CRIE SUA CONTA ================= -->
+<div class="label">Story 03 · “Sua conta na cidade” (tela real de login)</div>
+<div class="art story bg-green on-dark grid-dots" id="story-03">
+  <div style="position:absolute;left:80px;right:80px;top:170px;color:#fff">
+    <span class="pill glass" style="font-size:28px">Falta pouco</span>
+    <div class="h" style="margin-top:40px;font-weight:900;font-size:110px;line-height:.95">Prepara o<br /><span style="color:var(--gold)">dedo.</span></div>
+    <div style="margin-top:30px;font:500 38px/1.4 Inter,sans-serif;color:rgba(255,255,255,.85)">Criar sua conta vai levar<br />menos de 1 minuto.</div>
+  </div>
+  <div class="phone green-status" style="--pw:560px;left:260px;top:860px">
+    <div class="screen">
+      <div class="status"><span>9:41</span><span class="icons"><i></i><i></i></span></div>
+      <div class="shot"><img src="telas/login.png" /></div>
+    </div>
+  </div>
+  <div class="sticker" style="background:var(--gold);color:var(--forest);left:110px;top:1300px;transform:rotate(-7deg);font-size:34px">Em breve 💚</div>
+</div>
+
+</body>
+</html>

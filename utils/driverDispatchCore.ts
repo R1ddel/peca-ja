@@ -3,6 +3,7 @@
  * Não importa módulos RN para não quebrar as API routes do Expo.
  */
 import { Order } from '@/types';
+import { operatingCityKey, sameOperatingCity } from '@/utils/operatingCity';
 
 export const DRIVER_OFFER_SECONDS = 45;
 
@@ -48,7 +49,15 @@ export type DriverCandidate = {
   phone: string;
   deliveriesToday: number;
   lastOfferAt: number;
+  /** Cidade de atuação. Ex.: "Mucugê — BA". */
+  city?: string;
 };
+
+/** Entregador só recebe corrida da cidade que escolheu. Sem cidade nos dois lados, segue a fila antiga. */
+export function driverCanTakeCity(driverCity?: string | null, orderCity?: string | null): boolean {
+  if (!operatingCityKey(driverCity) && !operatingCityKey(orderCity)) return true;
+  return sameOperatingCity(driverCity, orderCity);
+}
 
 export type DispatchPatch = {
   orderId: string;
@@ -143,6 +152,17 @@ export function computeFairDispatchPatchesSync(
     }
   }
 
+  const driverCity = new Map(sorted.map((d) => [d.fleetId, d.city]));
+  for (const o of queue) {
+    if (!o.offeredToDriverId || !isOfferActive(o, nowMs)) continue;
+    if (driverCanTakeCity(driverCity.get(o.offeredToDriverId), o.city)) continue;
+    patches.push({
+      orderId: o.id,
+      offeredToDriverId: null,
+      offerExpiresAt: null,
+    });
+  }
+
   const busyFleet = new Set<string>();
   for (const d of sorted) {
     if (driverHasActiveJob(orders, d.fleetId)) busyFleet.add(d.fleetId);
@@ -176,6 +196,7 @@ export function computeFairDispatchPatchesSync(
     const declined = new Set(job.offerDeclinedBy ?? []);
     const pick = sorted.find(
       (d) =>
+        driverCanTakeCity(d.city, job.city) &&
         !busyFleet.has(d.fleetId) &&
         !offeredFleet.has(d.fleetId) &&
         !declined.has(d.fleetId)
@@ -224,14 +245,16 @@ export function applyDispatchPatches(
 export function getOfferForDriver(
   orders: Order[],
   fleetId: string,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  driverCity?: string | null
 ): Order | null {
   const mine = orders.filter(
     (o) =>
       o.offeredToDriverId === fleetId &&
       isOfferActive(o, nowMs) &&
       isOrderUnassignedForDispatch(o) &&
-      isKitchenReadyForPickup(o)
+      isKitchenReadyForPickup(o) &&
+      (driverCity === undefined || driverCanTakeCity(driverCity, o.city))
   );
   if (!mine.length) return null;
   mine.sort(

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { BackHeader } from '@/components/BackHeader';
 import { KeyboardAvoid } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
@@ -29,7 +29,18 @@ import {
   replyForTopic,
 } from '@/data/supportBot';
 import { useAuth } from '@/context/AuthContext';
-import { platformCreateTicket } from '@/services/platformClient';
+import {
+  asPlatformTickets,
+  platformCreateTicket,
+  platformListTickets,
+} from '@/services/platformClient';
+import { getPlatformToken } from '@/services/platformSession';
+import type { SupportTicket } from '@/services/platformTypes';
+import {
+  SUPPORT_REPLY_HOURS,
+  SUPPORT_SLA_SHORT,
+  SUPPORT_TICKET_OPENED,
+} from '@/utils/supportSla';
 
 type ChatMessage = {
   id: string;
@@ -40,6 +51,13 @@ type ChatMessage = {
 
 function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ticketStatusLabel(status: SupportTicket['status']) {
+  if (status === 'open') return 'Aberto';
+  if (status === 'in_progress') return 'Em andamento';
+  if (status === 'resolved') return 'Resolvido';
+  return 'Fechado';
 }
 
 export default function SupportScreen() {
@@ -62,6 +80,34 @@ export default function SupportScreen() {
   const [ticketModal, setTicketModal] = useState(false);
   const [ticketDraft, setTicketDraft] = useState('');
   const [ticketBusy, setTicketBusy] = useState(false);
+  const [myTickets, setMyTickets] = useState<SupportTicket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const loadMine = useCallback(async (silent = false) => {
+    const token = await getPlatformToken();
+    if (!token) {
+      setMyTickets([]);
+      return;
+    }
+    if (!silent) setTicketsLoading(true);
+    try {
+      const res = await platformListTickets({ token });
+      setMyTickets(res?.ok ? asPlatformTickets(res) : []);
+    } finally {
+      if (!silent) setTicketsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadMine();
+      const id = setInterval(() => {
+        void loadMine(true);
+      }, 12_000);
+      return () => clearInterval(id);
+    }, [loadMine, user?.id])
+  );
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -102,17 +148,19 @@ export default function SupportScreen() {
     const submit = async (body: string) => {
       const text = body.trim();
       if (!text) return;
+      const token = await getPlatformToken();
+      if (!token) {
+        Alert.alert('Conta', 'Faça login para abrir um chamado.');
+        return;
+      }
       const res = await platformCreateTicket({
-        email,
-        userId: user?.id,
+        token,
         subject: 'Ajuda pelo app',
         body: text,
       });
       if (res?.ok) {
-        pushMessage(
-          'bot',
-          'Ticket aberto! Nossa equipe vai analisar. Você também pode enviar e-mail se preferir.'
-        );
+        pushMessage('bot', SUPPORT_TICKET_OPENED);
+        await loadMine();
       } else {
         Alert.alert(
           'Ticket',
@@ -132,7 +180,7 @@ export default function SupportScreen() {
     if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
       Alert.prompt(
         'Abrir ticket',
-        'Descreva o problema em uma frase:',
+        `Descreva o problema. Resposta em até ${SUPPORT_REPLY_HOURS}h:`,
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -241,9 +289,18 @@ export default function SupportScreen() {
     sendText(label);
   }
 
+  const loggedIn = Boolean(user?.email);
+
   return (
     <MobileShell style={styles.screen}>
       <BackHeader title="Ajuda e suporte" fallbackHref="/(tabs)/profile" />
+
+      <View style={styles.slaBanner}>
+        <Ionicons name="time-outline" size={16} color={theme.colors.primaryDark} />
+        <Text style={styles.slaText}>
+          FAQ na hora · pessoa responde em até {SUPPORT_REPLY_HOURS}h (Seus chamados)
+        </Text>
+      </View>
 
       <View style={styles.modeBar}>
         <View style={[styles.modePill, styles.modePillOn]}>
@@ -280,6 +337,75 @@ export default function SupportScreen() {
             <Text style={styles.escalateText}>Interno</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      <View style={styles.mineBox}>
+        <View style={styles.mineHeader}>
+          <Text style={styles.mineTitle}>Seus chamados</Text>
+          <Text style={styles.mineSla}>{SUPPORT_SLA_SHORT}</Text>
+        </View>
+        {!loggedIn ? (
+          <Text style={styles.mineEmpty}>
+            Entre na conta para abrir um chamado e ver a resposta da equipe aqui.
+          </Text>
+        ) : ticketsLoading && myTickets.length === 0 ? (
+          <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 8 }} />
+        ) : myTickets.length === 0 ? (
+          <TouchableOpacity
+            style={styles.mineEmptyCard}
+            onPress={() => void openTicket()}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir primeiro chamado"
+          >
+            <Text style={styles.mineEmpty}>
+              Nenhum chamado ainda. Toque para abrir — resposta em até {SUPPORT_REPLY_HOURS}h.
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          myTickets.slice(0, 6).map((t) => {
+            const reply = [...(t.messages || [])].reverse().find((m) => m.from === 'support');
+            const status = ticketStatusLabel(t.status);
+            const open = expandedId === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={styles.mineCard}
+                onPress={() => setExpandedId(open ? null : t.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.subject}, ${status}`}
+              >
+                <View style={styles.mineCardTop}>
+                  <Text style={styles.mineSubject} numberOfLines={1}>
+                    {t.subject} · {status}
+                  </Text>
+                  <Ionicons
+                    name={open ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={theme.colors.textMuted}
+                  />
+                </View>
+                {!open ? (
+                  <Text style={styles.mineBody} numberOfLines={2}>
+                    {reply ? `Equipe: ${reply.text}` : t.body}
+                  </Text>
+                ) : (
+                  <View style={styles.thread}>
+                    {(t.messages?.length ? t.messages : [{ at: t.createdAt, from: 'user' as const, text: t.body }]).map(
+                      (m, i) => (
+                        <View key={`${t.id}_${i}`} style={styles.threadRow}>
+                          <Text style={styles.threadFrom}>
+                            {m.from === 'support' ? 'Equipe' : 'Você'}
+                          </Text>
+                          <Text style={styles.threadText}>{m.text}</Text>
+                        </View>
+                      )
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })
+        )}
       </View>
 
       <KeyboardAvoid style={styles.flex}>
@@ -342,7 +468,9 @@ export default function SupportScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Abrir ticket</Text>
-            <Text style={styles.modalSub}>Descreva o problema em uma frase</Text>
+            <Text style={styles.modalSub}>
+              Descreva o problema. A equipe responde em até {SUPPORT_REPLY_HOURS}h em Seus chamados.
+            </Text>
             <TextInput
               style={styles.modalInput}
               value={ticketDraft}
@@ -393,12 +521,109 @@ function Bubble({ message }: { message: ChatMessage }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
   flex: { flex: 1 },
-  modeBar: {
+  slaBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primaryLight,
+  },
+  slaText: {
+    flex: 1,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.primaryDark,
+    lineHeight: 16,
+  },
+  modeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.sm,
+  },
+  mineBox: {
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+    gap: 6,
+    maxHeight: 220,
+  },
+  mineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mineTitle: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  mineSla: {
+    fontSize: 11,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.primaryDark,
+  },
+  mineEmpty: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+    lineHeight: 20,
+  },
+  mineEmptyCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    borderStyle: 'dashed',
+  },
+  mineCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+  },
+  mineCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  mineSubject: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+    color: theme.colors.text,
+  },
+  mineBody: {
+    marginTop: 2,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textMuted,
+  },
+  thread: { marginTop: 8, gap: 8 },
+  threadRow: {
+    backgroundColor: theme.colors.background,
+    borderRadius: 8,
+    padding: 8,
+  },
+  threadFrom: {
+    fontSize: 10,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.textMuted,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  threadText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text,
+    lineHeight: 18,
   },
   modePill: {
     flexDirection: 'row',
@@ -417,7 +642,6 @@ const styles = StyleSheet.create({
   },
   modeTextOn: { color: theme.colors.primaryDark },
   escalateBtn: {
-    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

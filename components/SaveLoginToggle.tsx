@@ -13,7 +13,7 @@ type Props = {
 export function SaveLoginToggle({
   checked,
   onChange,
-  label = 'Salvar login neste aparelho',
+  label = 'Lembrar meu e-mail neste aparelho',
 }: Props) {
   return (
     <TouchableOpacity
@@ -29,7 +29,7 @@ export function SaveLoginToggle({
       </View>
       <View style={styles.textCol}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.hint}>Preenche e-mail e senha na próxima vez</Text>
+        <Text style={styles.hint}>A senha não fica salva</Text>
       </View>
     </TouchableOpacity>
   );

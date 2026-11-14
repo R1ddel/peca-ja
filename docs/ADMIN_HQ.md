@@ -1,42 +1,54 @@
-# Painel HQ Peça Já (`/admin`)
+# Peça Já Command Center (`/admin`)
 
-Painel web/ops da plataforma: overview, lojas, pedidos, tickets, frota e equipe.
-
-## Acesso
-
-1. Conta cloud no app (registro/login plataforma)
-2. **CEO:** e-mail em `PLATFORM_CEO_EMAILS` **ou** aba **Ativar HQ** com `SUPPORT_PIN`
-3. **Ops:** CEO promove em `/admin/team`
-
-### Recuperar senha
-
-Em `/admin/login` → aba **Recuperar** → Gerar código (aparece na tela no piloto) → nova senha.
-
-Vars: `EXPOSE_PASSWORD_RESET_CODE=1` no Railway (padrão recomendado até ter SMTP).
-
-```env
-PLATFORM_CEO_EMAILS=seu@email.com,outro@email.com
-EXPOSE_PASSWORD_RESET_CODE=1
-SUPPORT_PIN=seu-pin
-```
-
-Após mudar vars no Railway, faça redeploy / restart do serviço `api`.
+Painel administrativo **exclusivo na web (desktop)**. Não use no app mobile — no celular o shell mostra aviso para abrir no navegador.
 
 ## Abrir
 
-- Local web: `npx expo start --web` → `http://localhost:8081/admin`
-- App: navegue para `/admin` (login HQ)
+```bash
+npx expo start --web
+# http://localhost:8081/admin
+```
 
-A API de dados é a mesma do Railway (`EXPO_PUBLIC_API_URL`).
+API: mesma do Railway (`EXPO_PUBLIC_API_URL`).
 
-## Papéis
+## Acesso
 
-| Papel | Pode |
-|-------|------|
-| CEO | Tudo + suspender loja + gerir equipe |
-| Ops | Overview, lojas (leitura), pedidos, tickets, frota |
-| PIN `SUPPORT_PIN` | Break-glass nos tickets/frota antigos (`/support/*`) |
+1. Conta cloud (registro/login plataforma)
+2. **Super Admin (CEO):** e-mail em `PLATFORM_CEO_EMAILS` **ou** aba **Ativar HQ** com `SUPPORT_PIN`
+3. Outros papéis: Super Admin promove em **Equipe HQ**
 
-## Suspensão de loja
+```env
+PLATFORM_CEO_EMAILS=seu@email.com
+EXPOSE_PASSWORD_RESET_CODE=0
+SUPPORT_PIN=seu-pin
+```
 
-CEO suspende em Lojas → ficha. Loja some de `list_shops` / catálogo do cliente.
+## Papéis (RBAC)
+
+| Papel | Capacidade principal |
+|-------|----------------------|
+| `ceo` | Tudo (Super Admin) |
+| `admin` | Quase tudo (sem team) |
+| `ops` / `operations` | Operação, block, CRM |
+| `finance` | Financeiro, export, audit leitura |
+| `support` | View + edit + CRM |
+| `commercial` | CRM comercial |
+| `marketing` | Cupons/campanhas |
+| `auditor` | Audit/export |
+
+Permissões verificadas **no backend** (`hasPermission` / `requirePerm`).
+
+## Módulos
+
+Dashboard, Operação Agora, Mapa, Pedidos, Clientes 360, Comércios, Frota, Pipeline CRM, Cidades, Produtos, Financeiro, Carteiras, Marketing, Suporte, Avaliações, Relatórios, Auditoria, Logs técnicos, Saúde, Feature Flags, Incidentes, Data Quality, Equipe, **Equipe IA** (`/admin/ai-team` — agentes do pacote `equipe-ia/`, briefing e aprovações).
+
+## Regras
+
+- Dados reais (`platform_state` + `fleet_state`)
+- Toda mutação sensível gera **audit log** append-only
+- Ações de alto risco exigem **motivo**
+- Sem mock de produção; sem botões decorativos
+
+## Tema
+
+Light (padrão) / Dark — toggle no sidebar.

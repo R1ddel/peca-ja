@@ -26,10 +26,13 @@ import {
 import { PLATFORM_FEE_MERCHANT_NOTICE_FOOTER } from '@/constants/pricing';
 import { getUserPlaceDetails } from '@/services/permissions';
 import { CityBrand, resolveCityBrand } from '@/utils/cityBrand';
+import { useAuth } from '@/context/AuthContext';
 import {
   MerchantApplication,
-  getApplicationById,
+  isMerchantPanelUnlocked,
   merchantOnboardingGate,
+  normalizeRouteParam,
+  resolveMerchantAppForRoute,
 } from '@/utils/partners';
 import { theme } from '@/constants/theme';
 
@@ -56,7 +59,8 @@ function CityMosaic({ brand }: { brand: CityBrand }) {
 }
 
 export default function PartnerPlansScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { user } = useAuth();
   const [brand, setBrand] = useState<CityBrand>(() => resolveCityBrand(null));
   const [locating, setLocating] = useState(true);
   const [businessName, setBusinessName] = useState('');
@@ -64,6 +68,8 @@ export default function PartnerPlansScreen() {
   const [document, setDocument] = useState('');
   const [termsOpen, setTermsOpen] = useState(false);
   const [app, setApp] = useState<MerchantApplication | null>(null);
+
+  const id = app?.id || normalizeRouteParam(idParam);
 
   // Voltar do Perfil / Painel — não prende no cadastro
   const backHref = '/(tabs)/profile';
@@ -74,17 +80,21 @@ export default function PartnerPlansScreen() {
       (async () => {
         setLocating(true);
         try {
-          if (id) {
-            const found = await getApplicationById(id);
-            if (!cancelled && found?.role === 'merchant') {
-              setApp(found);
-              setBusinessName(found.businessName);
-              setOwnerName(found.ownerName);
-              setDocument(found.document || '');
+          const found = await resolveMerchantAppForRoute(idParam, user?.email);
+          if (!cancelled && found) {
+            if (found.paymentId === 'teste-sem-cobranca' && isMerchantPanelUnlocked(found)) {
+              router.replace('/merchant' as any);
+              return;
             }
+            setApp(found);
+            setBusinessName(found.businessName);
+            setOwnerName(found.ownerName);
+            setDocument(found.document || '');
+          } else if (!cancelled) {
+            setApp(null);
           }
           const place = await getUserPlaceDetails();
-          if (!cancelled) setBrand(resolveCityBrand(place?.city));
+          if (!cancelled) setBrand(resolveCityBrand(place?.city ?? found?.city));
         } catch {
           if (!cancelled) setBrand(resolveCityBrand(null));
         } finally {
@@ -94,7 +104,7 @@ export default function PartnerPlansScreen() {
       return () => {
         cancelled = true;
       };
-    }, [id])
+    }, [idParam, user?.email])
   );
 
   const gate = app ? merchantOnboardingGate(app) : null;
@@ -135,8 +145,31 @@ export default function PartnerPlansScreen() {
             {!!businessName && (
               <Text style={styles.bizHint}>Cadastro: {businessName}</Text>
             )}
+            {!locating && !app && (
+              <Text style={styles.bizHint}>
+                Sem cadastro neste aparelho — escolha o plano e complete os dados da loja para
+                pagar.
+              </Text>
+            )}
           </View>
         </LinearGradient>
+
+        {!locating && !app && (
+          <TouchableOpacity
+            style={[styles.continueBanner, { borderColor: brand.accent }]}
+            onPress={() => router.push('/partner/merchant-apply' as any)}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="storefront-outline" size={20} color={brand.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.continueTitle}>Cadastrar minha loja</Text>
+              <Text style={styles.continueHint}>
+                Preencha os dados e depois pague o plano com Pix ou cartão.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={brand.accent} />
+          </TouchableOpacity>
+        )}
 
         {gate === 'terms' && currentPlan && (
           <TouchableOpacity

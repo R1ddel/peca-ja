@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '@/components/BackHeader';
 import { MobileShell } from '@/components/MobileShell';
 import {
-  ensureOwnerMember,
   ownerEnterWithPin,
-  FIXED_PANEL_PIN,
   StaffSession,
 } from '@/utils/merchantTeam';
 import { theme } from '@/constants/theme';
@@ -42,18 +40,6 @@ export function OwnerPinGate({
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [hintPin, setHintPin] = useState(FIXED_PANEL_PIN);
-
-  useEffect(() => {
-    void (async () => {
-      const owner = await ensureOwnerMember({
-        businessId,
-        name: ownerName,
-        email: ownerEmail,
-      });
-      setHintPin(owner.pin || FIXED_PANEL_PIN);
-    })();
-  }, [businessId, ownerName, ownerEmail]);
 
   async function submit() {
     setBusy(true);
@@ -87,7 +73,7 @@ export function OwnerPinGate({
             <Text style={styles.shop}>{shopName}</Text>
             <Text style={styles.title}>Painel do dono</Text>
             <Text style={styles.sub}>
-              Conta: {ownerEmail}. Digite o PIN do dono (padrão: {hintPin}).
+              Entre com o e-mail da compra ({ownerEmail}) e o PIN pessoal, se houver.
             </Text>
           </View>
         </View>
@@ -118,17 +104,6 @@ export function OwnerPinGate({
             <Text style={styles.btnText}>Entrar</Text>
           )}
         </TouchableOpacity>
-
-        {__DEV__ ? (
-          <TouchableOpacity
-            style={styles.quick}
-            onPress={() => setPin(FIXED_PANEL_PIN)}
-          >
-            <Text style={[styles.quickText, { color: accent }]}>
-              [DEV] Preencher PIN de teste
-            </Text>
-          </TouchableOpacity>
-        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>

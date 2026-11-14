@@ -64,6 +64,9 @@ export type CreatePixChargeInput = {
   driverRecipientId?: string;
   platformRecipientId?: string;
   driverId?: string;
+  /** Assinatura do comerciante (businessId = pecaja-platform). */
+  applicationId?: string;
+  plan?: string;
 };
 
 export type PixCharge = {
@@ -87,6 +90,7 @@ export type PixCharge = {
     merchantPaidViaMp: boolean;
     driverViaLedger: boolean;
     applicationFee: number;
+    cashFeeDebtRecovery?: number;
     reason: string;
   };
 };
@@ -230,8 +234,8 @@ export function gpsFreightAdjustMessage(result: DeliveryPriceResult): string {
 }
 
 /**
- * Estima coordenadas do comércio perto do cliente (MVP sem geocode real).
- * Callers passam `distanceKm` aproximado a partir do card do comércio.
+ * @deprecated Não usar para frete. Inventa pin perto do cliente e distorce a taxa.
+ * Só para pins decorativos no mapa (ex.: vitrines). Frete → `resolveMerchantPin`.
  */
 export function merchantCoordsNearCustomer(
   customerLat: number,
@@ -405,6 +409,7 @@ async function createMockPixCharge(input: CreatePixChargeInput): Promise<PixChar
       merchantPaidViaMp: false,
       driverViaLedger: true,
       applicationFee: 0,
+      cashFeeDebtRecovery: 0,
       reason: 'Mock / piloto — collector + ledger.',
     },
     expiresAt: new Date(now + PAYMENT_CONFIG.pixExpiresInMs).toISOString(),

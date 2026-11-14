@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Peça Já — Reel: legendas + cartão final</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&family=Inter:wght@600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root { --green: #00a86b; --forest: #1e3a2f; --gold: #ffb800; --bg: #f5faf7; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: transparent; }
+  .stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+  .h { font-family: Poppins, sans-serif; letter-spacing: -0.03em; }
+
+  /* legendas por cima do vídeo (fundo transparente) */
+  .cap { position: absolute; left: 60px; right: 60px; top: 300px; text-align: center; }
+  .cap span {
+    display: inline; font: 800 66px/1.32 Poppins, sans-serif; color: #fff;
+    background: rgba(0, 0, 0, 0.0);
+    -webkit-text-stroke: 0;
+    text-shadow: 0 4px 0 rgba(0,0,0,.25), 0 0 26px rgba(0,0,0,.55);
+  }
+  .cap.tag span { background: var(--green); padding: 6px 20px; border-radius: 14px; box-decoration-break: clone; -webkit-box-decoration-break: clone; text-shadow: none; }
+
+  /* cartão final (4 s) */
+  #end {
+    background:
+      radial-gradient(900px 800px at 85% 5%, rgba(0,168,107,.45), transparent 60%),
+      radial-gradient(800px 700px at 0% 100%, rgba(255,184,0,.16), transparent 60%),
+      var(--forest);
+  }
+  #end::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.08) 2px, transparent 2px); background-size: 36px 36px; }
+  .logo { position: absolute; left: 50%; top: 170px; width: 190px; height: 190px; margin-left: -95px; border-radius: 50%; background: #fff; display: grid; place-items: center;
+    box-shadow: 0 0 0 22px rgba(255,255,255,.08), 0 0 0 46px rgba(255,255,255,.04);
+    animation: pop .7s cubic-bezier(.2,1.6,.4,1) .05s both; }
+  .logo svg { width: 104px; height: 104px; }
+  .title { position: absolute; left: 0; right: 0; top: 430px; text-align: center; color: #fff; }
+  .title .l1 { font-weight: 900; font-size: 128px; line-height: .9; animation: up .6s ease-out .35s both; }
+  .title .l2 { font-weight: 900; font-size: 128px; line-height: .9; color: var(--gold); animation: up .6s ease-out .55s both; }
+  .phone { position: absolute; left: 50%; top: 730px; width: 410px; margin-left: -205px; aspect-ratio: 9/19.2; border-radius: 60px; background: #0d1712; padding: 16px;
+    box-shadow: 0 0 0 3px #2c3d34, 0 60px 100px rgba(0,0,0,.5);
+    animation: phone 1s cubic-bezier(.2,.9,.3,1) .6s both; }
+  .phone .screen { width: 100%; height: 100%; border-radius: 48px; overflow: hidden; background: var(--bg); position: relative; }
+  .phone .screen::before { content: ""; position: absolute; left: 50%; top: 16px; width: 150px; height: 40px; margin-left: -75px; background: #0d1712; border-radius: 999px; z-index: 2; }
+  .phone img { width: 100%; display: block; margin-top: 52px; }
+  .cta { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; animation: up .5s ease-out 1.5s both; }
+  .cta .pill { display: inline-block; background: var(--gold); color: var(--forest); font: 800 40px/1 Inter, sans-serif; padding: 26px 44px; border-radius: 999px; box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+  .cta .sub { margin-top: 24px; font: 700 30px Inter, sans-serif; letter-spacing: .14em; color: rgba(255,255,255,.85); }
+
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  @keyframes up { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: none; } }
+  @keyframes phone { from { transform: translateY(900px) rotate(8deg); } to { transform: none; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="bag" viewBox="0 0 24 24"><path fill="#00a86b" d="M8 7V6a4 4 0 0 1 8 0v1h2.2c.7 0 1.2.5 1.3 1.2l.9 11c.1 1-.7 1.8-1.7 1.8H5.3c-1 0-1.8-.8-1.7-1.8l.9-11C4.6 7.5 5.1 7 5.8 7H8Zm2 0h4V6a2 2 0 0 0-4 0v1Zm-1.2 4.2a.9.9 0 0 0-.8 1.3 4.5 4.5 0 0 0 8 0 .9.9 0 1 0-1.6-.8 2.7 2.7 0 0 1-4.8 0 .9.9 0 0 0-.8-.5Z"/></symbol>
+</defs></svg>
+
+<div class="stage" id="cap-1"><div class="cap"><span>pov: quando o Peça Já<br />chegar em Mucugê 💚</span></div></div>
+<div class="stage" id="cap-2"><div class="cap tag"><span>pediu no app</span><br /><span>pagou no Pix</span></div></div>
+<div class="stage" id="cap-3"><div class="cap"><span>e chegou<br />quentinho 🤤</span></div></div>
+
+<div class="stage" id="end">
+  <div class="logo"><svg><use href="#bag" /></svg></div>
+  <div class="title h"><div class="l1">Novidade</div><div class="l2">chegando</div></div>
+  <div class="phone"><div class="screen"><img src="telas/home-lancamento.png" /></div></div>
+  <div class="cta"><span class="pill">Peça Já · em breve</span><div class="sub">MUCUGÊ · BA</div></div>
+</div>
+</body>
+</html>

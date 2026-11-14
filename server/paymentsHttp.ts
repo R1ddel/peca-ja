@@ -10,6 +10,9 @@ import { POST as postCardCharge } from '@/app/api/payments/card/charge+api';
 import { POST as postCardSave } from '@/app/api/payments/card/save+api';
 import { POST as postRefund } from '@/app/api/payments/refund+api';
 import { POST as postOrderCredit } from '@/app/api/payments/order-credit+api';
+import { POST as postSplitRelease } from '@/app/api/payments/split-release+api';
+import { POST as postPayoutProfile } from '@/app/api/payments/payout-profile+api';
+import { POST as postPlanStatus } from '@/app/api/payments/plan-status+api';
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
@@ -33,11 +36,7 @@ export async function handlePaymentsRequest(request: Request): Promise<Response 
   if (!path.startsWith('/api/payments')) return null;
 
   if (path === '/api/payments' || path === '/api/payments/') {
-    return json({
-      ok: true,
-      message:
-        'Payments Peça Já. POST /api/payments/pix|withdraw|refund|order-credit|webhook|card/charge|card/save · GET /api/payments/:id',
-    });
+    return json({ ok: false, message: 'Not found.' }, 404);
   }
 
   if (path === '/api/payments/pix' && method === 'POST') {
@@ -52,12 +51,24 @@ export async function handlePaymentsRequest(request: Request): Promise<Response 
     return postOrderCredit(request);
   }
 
+  if (path === '/api/payments/split-release' && method === 'POST') {
+    return postSplitRelease(request);
+  }
+
+  if (path === '/api/payments/payout-profile' && method === 'POST') {
+    return postPayoutProfile(request);
+  }
+
   if (path === '/api/payments/refund' && method === 'POST') {
     return postRefund(request);
   }
 
   if (path === '/api/payments/webhook' && method === 'POST') {
     return postWebhook(request);
+  }
+
+  if (path === '/api/payments/plan-status' && method === 'POST') {
+    return postPlanStatus(request);
   }
 
   if (path === '/api/payments/card/charge' && method === 'POST') {
@@ -77,7 +88,10 @@ export async function handlePaymentsRequest(request: Request): Promise<Response 
       'withdraw',
       'refund',
       'order-credit',
+      'split-release',
+      'payout-profile',
       'webhook',
+      'plan-status',
       'card',
     ]);
     if (!reserved.has(id.toLowerCase())) {
@@ -85,12 +99,5 @@ export async function handlePaymentsRequest(request: Request): Promise<Response 
     }
   }
 
-  return json(
-    {
-      ok: false,
-      message:
-        'Not found. Use /api/payments/pix, /withdraw, /refund, /order-credit, /webhook, /card/charge, /card/save ou GET /:id',
-    },
-    404
-  );
+  return json({ ok: false, message: 'Not found.' }, 404);
 }

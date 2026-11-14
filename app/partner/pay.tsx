@@ -22,11 +22,13 @@ import {
   PLAN_BILLING_DAYS,
   confirmMerchantPlanPayment,
   formatPlanPaidUntil,
-  getApplicationById,
   isMerchantPanelUnlocked,
   isMerchantSubscriptionActive,
+  normalizeRouteParam,
   resetMerchantPlanPayment,
+  resolveMerchantAppForRoute,
 } from '@/utils/partners';
+import { useAuth } from '@/context/AuthContext';
 import { getUserPlaceDetails } from '@/services/permissions';
 import { CityBrand, resolveCityBrand } from '@/utils/cityBrand';
 import { CreatePixChargeInput, PixCharge } from '@/services/payment';
@@ -39,22 +41,24 @@ import {
   maskCardLabel,
   waitCardPaymentApproved,
 } from '@/services/cards';
+import { fetchPaymentsJson } from '@/services/paymentsFetch';
 import { theme } from '@/constants/theme';
 
-type PayMethod = 'card' | 'pix';
+type PayMethod = 'pix' | 'card';
 
 /**
  * Assinatura do plano:
- * 1) Cartão (crédito/débito) — opção principal
- * 2) Pix — segunda opção
- * Valor 100% na conta Peça Já (sem split loja/entregador).
- * Só confirma com gateway paid. Inicia/renova 30 dias de acesso.
+ * Pix (Mercado Pago da plataforma) — opção principal, cai direto na conta Peça Já.
+ * Cartão — opção secundária, mesma conta MP (sem gateway/split de pedido).
+ * Confirmação automática pelo MP → libera o painel (após termo).
  */
 export default function PartnerPayScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id: idParam } = useLocalSearchParams<{ id?: string | string[] }>();
+  const { user } = useAuth();
   const [app, setApp] = useState<MerchantApplication | null>(null);
+  const id = app?.id || normalizeRouteParam(idParam);
   const [loading, setLoading] = useState(true);
-  const [method, setMethod] = useState<PayMethod>('card');
+  const [method, setMethod] = useState<PayMethod>('pix');
   const [pixVisible, setPixVisible] = useState(false);
   const [pixInput, setPixInput] = useState<CreatePixChargeInput | null>(null);
   const [brand, setBrand] = useState<CityBrand>(() => resolveCityBrand(null));
@@ -68,20 +72,49 @@ export default function PartnerPayScreen() {
     ? (`/partner/plans?id=${encodeURIComponent(id)}` as const)
     : '/partner/plans';
 
+  const syncPaidFromServer = useCallback(
+    async (merchant: MerchantApplication): Promise<MerchantApplication> => {
+      if (isMerchantSubscriptionActive(merchant)) return merchant;
+      try {
+        const hit = await fetchPaymentsJson('/api/payments/plan-status', {
+          method: 'POST',
+          body: JSON.stringify({ applicationId: merchant.id }),
+          timeoutMs: 10_000,
+        });
+        if (hit?.json?.ok && hit.json.paid && hit.json.payment?.id) {
+          const updated = await confirmMerchantPlanPayment(merchant.id, {
+            paymentId: String(hit.json.payment.id),
+            method: hit.json.payment.method === 'card' ? 'card' : 'pix',
+          });
+          return updated || merchant;
+        }
+      } catch {
+        /* offline / API */
+      }
+      return merchant;
+    },
+    []
+  );
+
   const refresh = useCallback(async () => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const found = await getApplicationById(id);
-      const merchant = found?.role === 'merchant' ? found : null;
+      let merchant = await resolveMerchantAppForRoute(idParam, user?.email);
       if (merchant) {
+        merchant = await syncPaidFromServer(merchant);
         setApp(merchant);
-        if (!merchant.plan) {
-          router.replace({ pathname: '/partner/plans' as any, params: { id } });
+        if (merchant.paymentId === 'teste-sem-cobranca' && isMerchantPanelUnlocked(merchant)) {
+          router.replace('/merchant' as any);
+          return;
         }
+        if (!merchant.plan) {
+          router.replace({
+            pathname: '/partner/plans' as any,
+            params: { id: merchant.id },
+          });
+        }
+      } else {
+        setApp(null);
       }
       const list = await loadSavedCards();
       setCards(list);
@@ -98,7 +131,7 @@ export default function PartnerPayScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [idParam, user?.email, syncPaidFromServer]);
 
   useFocusEffect(
     useCallback(() => {
@@ -161,6 +194,8 @@ export default function PartnerPayScreen() {
       subtotal: plan.monthlyPrice,
       deliveryFeeOverride: 0,
       discount: 0,
+      applicationId: app.id,
+      plan: app.plan,
     });
     setPixVisible(true);
   }
@@ -222,6 +257,8 @@ export default function PartnerPayScreen() {
         subtotal: plan.monthlyPrice,
         deliveryFeeOverride: 0,
         discount: 0,
+        applicationId: app.id,
+        plan: app.plan,
       });
 
       if (!result.ok) {
@@ -289,8 +326,19 @@ export default function PartnerPayScreen() {
       <MobileShell style={styles.screen}>
         <BackHeader title="Pagamento do plano" fallbackHref={plansHref} />
         <View style={styles.center}>
-          <Text style={styles.muted}>Escolha um plano antes de pagar.</Text>
-          <Button title="Ver planos" onPress={() => router.push(plansHref as any)} />
+          <Text style={styles.muted}>
+            {!app
+              ? 'Cadastre a loja para pagar o plano com Pix ou cartão.'
+              : 'Escolha um plano antes de pagar.'}
+          </Text>
+          <Button
+            title={!app ? 'Cadastrar loja' : 'Ver planos'}
+            onPress={() =>
+              router.push(
+                (!app ? '/partner/merchant-apply' : plansHref) as any
+              )
+            }
+          />
         </View>
       </MobileShell>
     );
@@ -351,8 +399,8 @@ export default function PartnerPayScreen() {
             <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
             <Text style={styles.paidText}>
               Assinatura ativa
-              {paidUntilLabel ? ` até ${paidUntilLabel}` : ''}. Valor vai para a conta Peça Já
-              (sem divisão com loja/entregador).
+              {paidUntilLabel ? ` até ${paidUntilLabel}` : ''}. O valor caiu direto na conta
+              Mercado Pago do Peça Já.
             </Text>
             {app.termsStatus !== 'accepted' ? (
               <Button
@@ -394,33 +442,13 @@ export default function PartnerPayScreen() {
             <View style={styles.infoBox}>
               <Ionicons name="wallet-outline" size={18} color={brand.accent} />
               <Text style={styles.infoText}>
-                Cobrança integral na conta Peça Já — sem split de pedido. Só libera com
-                confirmação do banco (cartão ou Pix).
+                O valor do plano cai direto na conta Mercado Pago do Peça Já (não passa pelo
+                gateway de pedidos). Assim que o MP confirmar o Pix, o painel libera
+                automaticamente.
               </Text>
             </View>
 
             <Text style={styles.sectionTitle}>Forma de pagamento</Text>
-
-            <TouchableOpacity
-              style={[styles.methodRow, method === 'card' && styles.methodRowOn]}
-              onPress={() => setMethod('card')}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="card"
-                size={22}
-                color={method === 'card' ? theme.colors.primary : theme.colors.textSecondary}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.methodLabel, method === 'card' && styles.methodLabelOn]}>
-                  Cartão de crédito ou débito
-                </Text>
-                <Text style={styles.methodHint}>Opção principal · confirmação do banco</Text>
-              </View>
-              {method === 'card' && (
-                <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
-              )}
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.methodRow, method === 'pix' && styles.methodRowOn]}
@@ -436,9 +464,32 @@ export default function PartnerPayScreen() {
                 <Text style={[styles.methodLabel, method === 'pix' && styles.methodLabelOn]}>
                   Pix
                 </Text>
-                <Text style={styles.methodHint}>Segunda opção · QR com confirmação automática</Text>
+                <Text style={styles.methodHint}>
+                  Recomendado · QR na sua conta MP · confirmação automática
+                </Text>
               </View>
               {method === 'pix' && (
+                <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.methodRow, method === 'card' && styles.methodRowOn]}
+              onPress={() => setMethod('card')}
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name="card"
+                size={22}
+                color={method === 'card' ? theme.colors.primary : theme.colors.textSecondary}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.methodLabel, method === 'card' && styles.methodLabelOn]}>
+                  Cartão de crédito ou débito
+                </Text>
+                <Text style={styles.methodHint}>Mesma conta MP · confirmação do banco</Text>
+              </View>
+              {method === 'card' && (
                 <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
               )}
             </TouchableOpacity>
@@ -508,9 +559,9 @@ export default function PartnerPayScreen() {
             <View style={styles.ctaPad}>
               <Button
                 title={
-                  method === 'card'
-                    ? `Pagar ${plan.label} com cartão`
-                    : `Pagar ${plan.label} com Pix`
+                  method === 'pix'
+                    ? `Pagar ${plan.label} com Pix`
+                    : `Pagar ${plan.label} com cartão`
                 }
                 onPress={handlePay}
                 loading={cardCharging}

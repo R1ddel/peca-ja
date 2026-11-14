@@ -17,7 +17,6 @@ import {
   roleDescription,
   roleAccent,
   authenticateOperatorByPin,
-  FIXED_PANEL_PIN,
   StaffSession,
 } from '@/utils/merchantTeam';
 import { theme } from '@/constants/theme';

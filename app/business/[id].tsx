@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Image,
   TouchableOpacity,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BackHeader } from '@/components/BackHeader';
@@ -17,6 +17,10 @@ import { MenuItemDetailModal } from '@/components/MenuItemDetailModal';
 import { FloatingCartButton } from '@/components/FloatingCartButton';
 import { BusinessReviewsPanel } from '@/components/BusinessReviewsPanel';
 import { getBusinessById, formatPrice } from '@/data/businesses';
+import { getUserPlaceDetails } from '@/services/permissions';
+import { getSimulatedCityLabel } from '@/utils/demoLocation';
+import { sameOperatingCity } from '@/utils/operatingCity';
+import { classifyMenuSection, menuSectionsFor } from '@/utils/menuSections';
 import { MERCHANT_PLANS } from '@/constants/plans';
 import { useCart } from '@/context/CartContext';
 import { useReviews } from '@/context/ReviewsContext';
@@ -25,6 +29,8 @@ import { categoryConfig, theme } from '@/constants/theme';
 import { MenuItem, SelectedAddon } from '@/types';
 import { getClosedBannerText, getOpenBadgeText } from '@/utils/businessHours';
 import { getBusinessCoverSource, getBusinessLogoSource } from '@/utils/businessLogos';
+import { paymentSummary } from '@/utils/paymentMethods';
+import { useMerchantShopRevision } from '@/hooks/useMerchantShopRevision';
 
 type MainTab = 'cardapio' | 'avaliacoes';
 
@@ -36,7 +42,8 @@ export default function BusinessScreen() {
     from?: string;
     q?: string;
   }>();
-  const business = getBusinessById(id ?? '');
+  const shopRevision = useMerchantShopRevision();
+  const business = useMemo(() => getBusinessById(id ?? ''), [id, shopRevision]);
   const { addItem, decreaseItem, getItemQuantity } = useCart();
   const { getAverageForBusiness } = useReviews();
   const { isBusinessFavorite, toggleBusiness, isDishFavorite, toggleDish } = useFavorites();
@@ -45,6 +52,19 @@ export default function BusinessScreen() {
   const [customizing, setCustomizing] = useState<MenuItem | null>(null);
   const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
   const [openedFromSearch, setOpenedFromSearch] = useState(false);
+  const [customerCity, setCustomerCity] = useState(() => getSimulatedCityLabel());
+
+  useEffect(() => {
+    void getUserPlaceDetails()
+      .then((place) => setCustomerCity(getSimulatedCityLabel(place?.city)))
+      .catch(() => undefined);
+  }, []);
+
+  const outsideCity =
+    !!business?.city &&
+    !!customerCity &&
+    customerCity.toLowerCase() !== 'sua cidade' &&
+    !sameOperatingCity(business.city, customerCity);
 
   const liveRating = business ? getAverageForBusiness(business.id) : { average: 0, count: 0 };
 
@@ -60,7 +80,7 @@ export default function BusinessScreen() {
     const item = biz.menu.find((m) => m.id === targetItemId);
     if (!item) return;
     setMainTab('cardapio');
-    setSelectedMenuCategory(item.category);
+    setSelectedMenuCategory(classifyMenuSection(biz.category, item));
     setDetailItem(item);
     setOpenedFromSearch(true);
   }, [id, itemId]);
@@ -84,40 +104,56 @@ export default function BusinessScreen() {
   const backFallbackParams =
     cameFromSearch && !cameFromHome && searchQuery ? { q: searchQuery } : undefined;
 
+  const sectionOf = useCallback(
+    (item: { name?: string; description?: string; details?: string; category?: string }) =>
+      classifyMenuSection(business?.category, item),
+    [business?.category]
+  );
+
   const menuCategories = useMemo(() => {
     if (!business) return [];
-    const cats = [...new Set(business.menu.map((m) => m.category))];
-    // Destaca Bebidas perto do início para restaurantes
+    const present = new Set(business.menu.map((item) => sectionOf(item)));
+    const ordered = menuSectionsFor(business.category).filter((section) => present.has(section));
+    const extra = [...present].filter((section) => !ordered.includes(section));
+    const cats = [...ordered, ...extra];
     if (business.sellsDrinks && cats.includes('Bebidas')) {
-      const rest = cats.filter((c) => c !== 'Bebidas');
+      const rest = cats.filter((section) => section !== 'Bebidas');
       return ['Todos', 'Bebidas', ...rest];
     }
     return ['Todos', ...cats];
-  }, [business]);
+  }, [business, sectionOf]);
 
   const foodItems = useMemo(() => {
     if (!business) return [];
-    return business.menu.filter((m) => m.category !== 'Bebidas');
-  }, [business]);
+    return business.menu.filter((item) => sectionOf(item) !== 'Bebidas');
+  }, [business, sectionOf]);
 
   const drinkItems = useMemo(() => {
     if (!business) return [];
-    return business.menu.filter((m) => m.category === 'Bebidas');
-  }, [business]);
+    return business.menu.filter((item) => sectionOf(item) === 'Bebidas');
+  }, [business, sectionOf]);
 
   const filteredMenu = useMemo(() => {
     if (!business) return [];
     if (selectedMenuCategory === 'Todos') return business.menu;
-    return business.menu.filter((m) => m.category === selectedMenuCategory);
-  }, [business, selectedMenuCategory]);
+    return business.menu.filter((item) => sectionOf(item) === selectedMenuCategory);
+  }, [business, selectedMenuCategory, sectionOf]);
 
   const handleAdd = (item: MenuItem) => {
+    if (outsideCity || !business) return;
+    if (!item.addonGroups?.length) {
+      addItem(item, business.id, business.name, [], '');
+      router.push('/cart');
+      return;
+    }
     setCustomizing(item);
   };
 
   const handleConfirmAddons = (addons: SelectedAddon[], note: string) => {
-    if (!business || !customizing) return;
+    if (!business || !customizing || outsideCity) return;
     addItem(customizing, business.id, business.name, addons, note);
+    setCustomizing(null);
+    router.push('/cart');
   };
 
   if (!business) {
@@ -154,7 +190,7 @@ export default function BusinessScreen() {
       hasAddons={!!item.addonGroups?.length}
       onAdd={() => handleAdd(item)}
       onRemove={() => decreaseItem(item.id)}
-      disabled={!business.isOpen}
+      disabled={!business.isOpen || outsideCity}
       favorite={isDishFavorite(business.id, item.id)}
       onToggleFavorite={() => void toggleDish(business.id, item.id)}
       onPressImage={() => setDetailItem(item)}
@@ -196,6 +232,15 @@ export default function BusinessScreen() {
             <Text style={styles.closedBannerText}>{getClosedBannerText(business)}</Text>
           </View>
         )}
+
+        {outsideCity ? (
+          <View style={styles.closedBanner}>
+            <Ionicons name="location-outline" size={18} color={theme.colors.warning} />
+            <Text style={styles.closedBannerText}>
+              {business.name} só atende em {business.city}. Você está em {customerCity}.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={[styles.infoCard, !business.isOpen && styles.infoCardAfterBanner]}>
           <View style={styles.infoHeader}>
@@ -246,6 +291,9 @@ export default function BusinessScreen() {
             <MetaItem icon="bicycle-outline" label={business.deliveryFee === 0 ? 'Grátis' : formatPrice(business.deliveryFee)} />
             <MetaItem icon="location-outline" label={business.distance} />
           </View>
+          <Text style={styles.payLine}>
+            Aceita {paymentSummary(business.acceptedPayments, business.deliveryBy)}
+          </Text>
 
           <View style={styles.tags}>
             <View style={[styles.categoryTag, { backgroundColor: category.color + '20' }]}>
@@ -397,7 +445,7 @@ export default function BusinessScreen() {
         visible={!!detailItem}
         item={detailItem}
         onClose={() => setDetailItem(null)}
-        disabled={!business.isOpen}
+        disabled={!business.isOpen || outsideCity}
         onAdd={
           detailItem
             ? () => {
@@ -496,7 +544,12 @@ const styles = StyleSheet.create({
   openBadgeClosed: {
     color: theme.colors.warning,
   },
-  metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md, marginBottom: theme.spacing.md },
+  metaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md, marginBottom: theme.spacing.sm },
+  payLine: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.sm,
+    marginBottom: theme.spacing.md,
+  },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4, width: '45%' },
   metaLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm, marginBottom: theme.spacing.sm },

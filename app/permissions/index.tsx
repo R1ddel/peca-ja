@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Linking,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
@@ -66,7 +67,14 @@ export default function PermissionsScreen() {
       const status = await requestPermission(id);
       await refresh();
       if (status === 'denied') {
-        // Usuário bloqueou — orientar a abrir ajustes
+        Alert.alert(
+          'Permissão negada',
+          'Abra os ajustes do celular e libere esta permissão para o Peça Já / Expo Go.',
+          [
+            { text: 'Ok', style: 'cancel' },
+            { text: 'Abrir ajustes', onPress: () => void openSystemSettings() },
+          ]
+        );
       }
     } finally {
       setBusyId(null);

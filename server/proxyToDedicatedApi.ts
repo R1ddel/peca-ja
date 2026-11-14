@@ -2,6 +2,11 @@
  * Se a API dedicada (8787) estiver ativa, o Metro NÃO abre Postgres —
  * só repassa o request. Evita estourar o pool do Supabase.
  */
+function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]';
+}
+
 export async function proxyToDedicatedApi(request: Request): Promise<Response | null> {
   const use =
     process.env.EXPO_PUBLIC_USE_FLEET_SERVER === '1' ||
@@ -12,6 +17,17 @@ export async function proxyToDedicatedApi(request: Request): Promise<Response | 
     process.env.EXPO_PUBLIC_FLEET_URL?.trim() ||
     `http://127.0.0.1:${process.env.EXPO_PUBLIC_FLEET_PORT?.trim() || '8787'}`
   ).replace(/\/$/, '');
+
+  // O site publicado não alcança o computador. Trata o pedido aqui.
+  try {
+    const incomingHost = new URL(request.url).hostname;
+    const targetHost = new URL(base).hostname;
+    if (isLoopbackHost(targetHost) && incomingHost && !isLoopbackHost(incomingHost)) {
+      return null;
+    }
+  } catch {
+    /* segue o proxy */
+  }
 
   try {
     const incoming = new URL(request.url);

@@ -20,8 +20,8 @@ import {
   resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
-import { fleetDriverLocationRemote } from '@/services/fleetClient';
 import { buildDeliveryLeg, resolveBestRouteLeg } from '@/utils/driverRoute';
+import { useDriverLivePosition } from '@/hooks/useDriverLivePosition';
 
 type Props = {
   order: Order;
@@ -53,39 +53,16 @@ function customerOf(order: Order): LatLng {
 
 export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Props) {
   const mapRef = useRef<MapView>(null);
-  const [driverPos, setDriverPos] = useState<LatLng | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const live = useDriverLivePosition(order.driverId);
+  const driverPos = live
+    ? { latitude: live.latitude, longitude: live.longitude }
+    : null;
+  const updatedAt = live?.at ?? null;
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
 
   const shop = useMemo(() => shopOf(order), [order]);
   const customer = useMemo(() => customerOf(order), [order]);
   const toCustomer = !!order.pickupVerifiedAt || order.status === 'saiu_entrega';
-
-  useEffect(() => {
-    if (!order.driverId) return;
-    let alive = true;
-    const poll = async () => {
-      const res = await fleetDriverLocationRemote(order.driverId!);
-      if (!alive) return;
-      if (
-        res?.ok &&
-        res.location &&
-        isValidLatLng(res.location.latitude, res.location.longitude)
-      ) {
-        setDriverPos({
-          latitude: res.location.latitude,
-          longitude: res.location.longitude,
-        });
-        setUpdatedAt(res.location.at);
-      }
-    };
-    void poll();
-    const id = setInterval(() => void poll(), 4000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [order.driverId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,15 +185,15 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Pr
       </MapView>
       {!driverPos ? (
         <Text style={styles.hint}>
-          Aguardando localização do entregador… Peça para ele ficar online com GPS liberado.
+          O ponto verde é o motoboy. Ele aparece assim que o GPS da corrida atualizar.
         </Text>
       ) : (
         <Text style={styles.hint}>
           {toCustomer
-            ? `${order.driverName || 'Entregador'} está a caminho ${
-                viewer === 'merchant' ? 'do cliente' : 'de você'
+            ? `${order.driverName || 'Motoboy'} está a caminho ${
+                viewer === 'merchant' ? 'do cliente' : 'com o seu pedido'
               }`
-            : `${order.driverName || 'Entregador'} está a caminho da loja`}
+            : `${order.driverName || 'Motoboy'} está indo buscar o pedido na loja`}
         </Text>
       )}
     </View>

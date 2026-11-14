@@ -16,7 +16,6 @@ import { getPlatformToken, setPlatformToken } from '@/services/platformSession';
 import { hydrateDemoLocation } from '@/utils/demoLocation';
 import {
   applyLocalPasswordReset,
-  createLocalPasswordReset,
   findLocalUserByEmail,
   getLocalUsers,
   hydrateLocalAccountIfRemembered,
@@ -25,6 +24,8 @@ import {
   verifyLocalLogin,
 } from '@/utils/localAuthStore';
 import { normalizeEmail } from '@/utils/authEmail';
+import { AlertHost } from '@/components/AlertHost';
+import '@/utils/alert/showAlert';
 
 type AuthResult = { success: boolean; error?: string };
 
@@ -46,9 +47,7 @@ interface AuthContextType {
     newPassword: string,
     resetToken: string
   ) => Promise<AuthResult>;
-  requestPasswordReset: (
-    email: string
-  ) => Promise<AuthResult & { devResetToken?: string }>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
 }
@@ -75,6 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (token) {
         const me = await platformMe(token);
         const remoteUser = me ? asPlatformUser(me) : null;
+        const still = await getPlatformToken();
+        // Um login mais novo trocou o token enquanto este `me` rodava.
+        if (still && still !== token) return;
         if (remoteUser) {
           setUser(remoteUser);
           setCloudAuth(true);
@@ -82,13 +84,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(CLOUD_AUTH_KEY, '1');
           return;
         }
-        await setPlatformToken(null);
+        // Rede caiu: mantém o token. Só apaga se a nuvem recusou esta sessão.
+        const rejected = me && me.ok === false && me.code === 'AUTH';
+        if (rejected && (await getPlatformToken()) === token) {
+          await setPlatformToken(null);
+        }
       }
 
       const stored = await AsyncStorage.getItem(CURRENT_USER_KEY);
       if (stored) setUser(JSON.parse(stored));
-      const cloud = await AsyncStorage.getItem(CLOUD_AUTH_KEY);
-      setCloudAuth(cloud === '1');
+      // Sem token cloud válido, nunca marcar cloudAuth — evita HQ com "Sem sessão cloud"
+      const tokenAfter = await getPlatformToken();
+      if (!tokenAfter) {
+        await AsyncStorage.setItem(CLOUD_AUTH_KEY, '0');
+        setCloudAuth(false);
+      } else {
+        const cloud = await AsyncStorage.getItem(CLOUD_AUTH_KEY);
+        setCloudAuth(cloud === '1');
+      }
     } catch {
       // ignore
     } finally {
@@ -192,30 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true };
     }
 
-    const localUser = await findLocalUserByEmail(trimmed);
-    if (remote && !remote.ok && remote.message?.toLowerCase().includes('senha')) {
-      return { success: false, error: 'Senha incorreta. Use Recuperar conta se esqueceu.' };
-    }
-    if (localUser) {
-      return {
-        success: false,
-        error: 'Senha incorreta neste aparelho. Toque em Recuperar conta para gerar um código.',
-      };
-    }
-    if (remote && !remote.ok) {
-      return {
-        success: false,
-        error:
-          'Não há conta com este e-mail na nuvem nem neste celular. Crie uma conta — ela fica salva na nuvem.',
-      };
-    }
-    return {
-      success: false,
-      error:
-        localLogin.ok === false
-          ? localLogin.error
-          : 'Não foi possível entrar. Confira a conexão, recupere a senha ou crie a conta.',
-    };
+    return { success: false, error: 'E-mail ou senha inválidos.' };
   }, []);
 
   const register = useCallback(
@@ -237,23 +227,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true };
       }
 
-      if (remote && !remote.ok && remote.code === 'EXISTS') {
-        // Já existe na nuvem — tenta login com a senha informada
-        const loginRes = await platformLogin(email, data.password);
-        const u = loginRes ? asPlatformUser(loginRes) : null;
-        const t = loginRes ? asPlatformToken(loginRes) : null;
-        if (u && t) {
-          await mirrorPasswordLocally(u, data.password);
-          await persistSession(u, { cloud: true, token: t });
-          return { success: true };
-        }
-        return { success: false, error: remote.message };
+      if (remote && !remote.ok && (remote.code === 'EXISTS' || remote.code === 'AUTH')) {
+        return {
+          success: false,
+          error: 'Não foi possível concluir o cadastro. Tente entrar ou recuperar a senha.',
+        };
       }
 
       // API offline / falhou — cria só no aparelho
       const existing = await findLocalUserByEmail(email);
       if (existing) {
-        return { success: false, error: 'Este e-mail já está cadastrado neste aparelho.' };
+        return {
+          success: false,
+          error: 'Não foi possível concluir o cadastro. Tente entrar ou recuperar a senha.',
+        };
       }
 
       const local = await upsertLocalUser({
@@ -276,39 +263,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await hydrateLocalAccountIfRemembered(trimmed);
 
-    const remote = await platformRequestPasswordReset(trimmed);
-    const remoteToken =
-      remote && remote.ok
-        ? typeof (remote as { resetToken?: string }).resetToken === 'string'
-          ? (remote as { resetToken: string }).resetToken
-          : typeof (remote as { devResetToken?: string }).devResetToken === 'string'
-            ? (remote as { devResetToken: string }).devResetToken
-            : undefined
-        : undefined;
-    const cloudExists = !!(remote && remote.ok && (remote as { exists?: boolean }).exists === true);
-
-    if (remoteToken) {
-      return { success: true, devResetToken: String(remoteToken).toUpperCase() };
-    }
-
-    const local = await createLocalPasswordReset(trimmed);
-    if (local.ok) {
-      return { success: true, devResetToken: local.token };
-    }
-
-    if (cloudExists && !remoteToken) {
-      return {
-        success: false,
-        error:
-          'Conta encontrada na nuvem, mas o código não veio. Tente de novo em alguns segundos.',
-      };
-    }
-
-    return {
-      success: false,
-      error:
-        'Não encontramos este e-mail na nuvem nem neste celular. Crie uma conta com o mesmo e-mail — ela fica salva na nuvem.',
-    };
+    await platformRequestPasswordReset(trimmed);
+    return { success: true };
   }, []);
 
   const resetPassword = useCallback(
@@ -363,36 +319,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) return;
       const patched: User = { ...user, ...data };
 
-      const token = await getPlatformToken();
-      if (token) {
-        const remote = await platformUpdateProfile(token, data);
-        const remoteUser = remote ? asPlatformUser(remote) : null;
-        if (remoteUser) {
-          const merged: User = {
-            ...patched,
-            ...remoteUser,
-            ...data,
-          };
-          if (!('photoUrl' in data) && !remoteUser.photoUrl && patched.photoUrl) {
-            merged.photoUrl = patched.photoUrl;
-          }
-          if (!('coverUrl' in data) && !remoteUser.coverUrl && patched.coverUrl) {
-            merged.coverUrl = patched.coverUrl;
-          }
-          setUser(merged);
-          await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(merged));
-          const local = await findLocalUserByEmail(merged.email);
-          if (local) {
-            await upsertLocalUser({
-              ...local,
-              ...merged,
-              password: local.password,
-            });
-          }
-          return;
-        }
-      }
-
+      // Sempre grava local primeiro — foto/capa não podem depender da API na nuvem
       setUser(patched);
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(patched));
       const users = await getLocalUsers();
@@ -400,6 +327,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (index >= 0) {
         users[index] = { ...users[index], ...data };
         await saveLocalUsers(users);
+      }
+
+      const token = await getPlatformToken();
+      if (!token) return;
+      try {
+        const remote = await platformUpdateProfile(token, data);
+        const remoteUser = remote ? asPlatformUser(remote) : null;
+        if (!remoteUser) return;
+        const merged: User = {
+          ...patched,
+          ...remoteUser,
+          ...data,
+        };
+        if (!('photoUrl' in data) && !remoteUser.photoUrl && patched.photoUrl) {
+          merged.photoUrl = patched.photoUrl;
+        }
+        if (!('coverUrl' in data) && !remoteUser.coverUrl && patched.coverUrl) {
+          merged.coverUrl = patched.coverUrl;
+        }
+        setUser(merged);
+        await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(merged));
+      } catch {
+        /* local já salvo */
       }
     },
     [user]
@@ -420,6 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+      <AlertHost />
     </AuthContext.Provider>
   );
 }

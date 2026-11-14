@@ -20,7 +20,13 @@ export const WALLET_MAX_WITHDRAWS_PER_DAY = MERCHANT_MAX_WITHDRAWS_PER_DAY;
 
 export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
-export type WalletEntryType = 'credit' | 'reversal' | 'withdrawal';
+export type WalletEntryType =
+  | 'credit'
+  | 'reversal'
+  | 'withdrawal'
+  | 'cash_fee'
+  /** Abate dívida de taxa (dinheiro) após Pix/cartão — sobe o saldo. */
+  | 'cash_fee_recovery';
 
 export type WithdrawalStatus = 'pending' | 'paid' | 'failed';
 
@@ -143,18 +149,42 @@ export async function ensureWallet(
   return created;
 }
 
-/** Saldo disponível para saque imediato. */
-export function availableBalance(wallet: MerchantWallet | null | undefined): number {
+/** Saldo contábil (pode ficar negativo se só houve taxa em dinheiro). */
+export function walletSignedBalance(wallet: MerchantWallet | null | undefined): number {
   if (!wallet) return 0;
   let bal = 0;
   for (const e of wallet.entries) {
-    if (e.type === 'credit') bal += e.amount;
+    if (e.type === 'credit' || e.type === 'cash_fee_recovery') bal += e.amount;
     else if (e.type === 'reversal') bal -= e.amount;
+    else if (e.type === 'cash_fee') bal -= e.amount;
     else if (e.type === 'withdrawal' && (e.status === 'pending' || e.status === 'paid')) {
       bal -= e.amount;
     }
   }
-  return round2(Math.max(0, bal));
+  return round2(bal);
+}
+
+/** Saldo disponível para saque imediato. */
+export function availableBalance(wallet: MerchantWallet | null | undefined): number {
+  return round2(Math.max(0, walletSignedBalance(wallet)));
+}
+
+/**
+ * Valor que o saque pode enviar: carteira deste aparelho.
+ * Se o ledger da nuvem for menor, o saque fica nesse teto.
+ */
+export function withdrawableBalance(
+  wallet: MerchantWallet | null | undefined,
+  ledgerBalance?: number | null
+): number {
+  const local = availableBalance(wallet);
+  if (ledgerBalance == null || !Number.isFinite(ledgerBalance)) return local;
+  return round2(Math.min(local, Math.max(0, ledgerBalance)));
+}
+
+/** Dívida de taxa em dinheiro ainda não coberta por créditos / recovery. */
+export function pendingCashFeeDebt(wallet: MerchantWallet | null | undefined): number {
+  return round2(Math.max(0, -walletSignedBalance(wallet)));
 }
 
 /** Total já creditado (bruto de pedidos, sem descontar saques). */
@@ -163,7 +193,7 @@ export function totalCredited(wallet: MerchantWallet | null | undefined): number
   let c = 0;
   let r = 0;
   for (const e of wallet.entries) {
-    if (e.type === 'credit') c += e.amount;
+    if (e.type === 'credit' && !e.id.startsWith('cfr_')) c += e.amount;
     if (e.type === 'reversal') r += e.amount;
   }
   return round2(Math.max(0, c - r));
@@ -196,19 +226,12 @@ function hasOpenCredit(wallet: MerchantWallet, orderId: string): boolean {
   return creditedOrderIds(wallet).has(orderId);
 }
 
-/** Pedido já confirmado pro cliente (pagamento ok) e ainda não cancelado. */
+/** Pedido pago online e ainda não cancelado. Dinheiro vivo não entra no Pix. */
 export function orderEligibleForCredit(order: Order): boolean {
-  if (order.status === 'cancelado') return false;
-  if (order.status === 'pendente' && !order.paymentConfirmed) return false;
-  const amount = order.establishmentAmount ?? 0;
-  if (amount <= 0) return false;
-  return (
-    order.paymentConfirmed === true ||
-    order.status === 'confirmado' ||
-    order.status === 'preparando' ||
-    order.status === 'saiu_entrega' ||
-    order.status === 'entregue'
-  );
+  if (order.paymentProvider === 'offline') return false;
+  if (order.status !== 'entregue') return false;
+  if (order.paymentConfirmed !== true) return false;
+  return (order.establishmentAmount ?? 0) > 0;
 }
 
 export function pixKeyTypeLabel(t: PixKeyType): string {
@@ -302,10 +325,63 @@ export async function savePixKey(params: {
 }
 
 /**
- * Credita establishmentAmount quando o pedido é confirmado para o cliente.
+ * Abate dívida de taxa (dinheiro) na carteira local após Pix/cartão no split MP.
  * Idempotente por orderId.
  */
+export async function recoverCashFeeDebtInWallet(
+  order: Order,
+  amountOverride?: number
+): Promise<MerchantWallet | null> {
+  const amount = round2(
+    amountOverride ?? order.cashFeeDebtRecovered ?? 0
+  );
+  if (amount < 0.01 || !order.businessId) return null;
+
+  const all = await loadAll();
+  let wallet = all.find((w) => w.businessId === order.businessId);
+  if (!wallet) {
+    wallet = emptyWallet(order.businessId, order.businessId);
+    all.unshift(wallet);
+  }
+  if (wallet.entries.some((e) => e.id === `cfrcv_${order.id}`)) return wallet;
+
+  const debt = pendingCashFeeDebt(wallet);
+  const recover = round2(Math.min(amount, debt > 0 ? debt : amount));
+  if (recover < 0.01) return wallet;
+
+  const label =
+    order.shopOrderNumber != null ? `#${order.shopOrderNumber}` : order.id.slice(-6);
+  const entry: WalletEntry = {
+    id: `cfrcv_${order.id}`,
+    businessId: order.businessId,
+    type: 'cash_fee_recovery',
+    amount: recover,
+    orderId: order.id,
+    shopOrderNumber: order.shopOrderNumber,
+    description: `Débito de taxa (dinheiro) abatido no pedido ${label}`,
+    createdAt: new Date().toISOString(),
+  };
+  const next: MerchantWallet = {
+    ...wallet,
+    entries: [entry, ...wallet.entries],
+    updatedAt: new Date().toISOString(),
+  };
+  await saveAll(all.map((w) => (w.businessId === order.businessId ? next : w)));
+  return next;
+}
+
+/**
+ * Credita establishmentAmount só depois da entrega confirmada.
+ * Idempotente por orderId.
+ * Com marketplace split (já pago no MP): não credita de novo — só abate dívida.
+ */
 export async function creditOrderToWallet(order: Order): Promise<MerchantWallet | null> {
+  if (order.status !== 'entregue') return null;
+
+  if (order.settlementMerchantPaidViaMp) {
+    return recoverCashFeeDebtInWallet(order);
+  }
+
   if (!orderEligibleForCredit(order)) return null;
   const amount = round2(order.establishmentAmount ?? 0);
   if (amount <= 0) return null;
@@ -329,7 +405,7 @@ export async function creditOrderToWallet(order: Order): Promise<MerchantWallet 
     amount,
     orderId: order.id,
     shopOrderNumber: order.shopOrderNumber,
-    description: `Pedido ${label} confirmado`,
+    description: `Pedido ${label} entregue`,
     createdAt: new Date().toISOString(),
   };
   const next: MerchantWallet = {
@@ -374,6 +450,84 @@ export async function reverseOrderCredit(order: Order): Promise<MerchantWallet |
   return next;
 }
 
+function cashFeeAmount(order: Order): number {
+  return round2(order.cashFeePixAmount ?? order.platformFee ?? 0);
+}
+
+function hasOpenCashFee(wallet: MerchantWallet, orderId: string): boolean {
+  const returned = wallet.entries.some((e) => e.id === `cfr_${orderId}`);
+  if (returned) return false;
+  return wallet.entries.some((e) => e.type === 'cash_fee' && e.orderId === orderId);
+}
+
+/**
+ * Pedido em dinheiro da própria loja: a taxa gravada no pedido sai do caixa Pix.
+ * A loja fica com a cédula. Idempotente por pedido.
+ */
+export async function debitCashFeeFromWallet(order: Order): Promise<MerchantWallet | null> {
+  if (order.paymentProvider !== 'offline' || order.deliveryBy !== 'store') return null;
+  if (order.status === 'cancelado') return null;
+  const amount = cashFeeAmount(order);
+  if (amount < 0.01) return null;
+
+  const all = await loadAll();
+  let wallet = all.find((w) => w.businessId === order.businessId);
+  if (!wallet) {
+    wallet = emptyWallet(order.businessId, order.businessId);
+    all.unshift(wallet);
+  }
+  if (hasOpenCashFee(wallet, order.id)) return wallet;
+
+  const label =
+    order.shopOrderNumber != null ? `#${order.shopOrderNumber}` : order.id.slice(-6);
+  const entry: WalletEntry = {
+    id: `cf_${order.id}`,
+    businessId: order.businessId,
+    type: 'cash_fee',
+    amount,
+    orderId: order.id,
+    shopOrderNumber: order.shopOrderNumber,
+    description: `Taxa Peça Já do pedido ${label} em dinheiro — saiu do caixa e cai no Pix`,
+    createdAt: new Date().toISOString(),
+  };
+  const next: MerchantWallet = {
+    ...wallet,
+    entries: [entry, ...wallet.entries],
+    updatedAt: new Date().toISOString(),
+  };
+  await saveAll(all.map((w) => (w.businessId === order.businessId ? next : w)));
+  return next;
+}
+
+/** Devolve a taxa ao caixa se o pedido em dinheiro for cancelado. */
+export async function returnCashFeeToWallet(order: Order): Promise<MerchantWallet | null> {
+  const all = await loadAll();
+  const wallet = all.find((w) => w.businessId === order.businessId);
+  if (!wallet || !hasOpenCashFee(wallet, order.id)) return wallet ?? null;
+  const fee = wallet.entries.find((e) => e.type === 'cash_fee' && e.orderId === order.id);
+  const amount = fee?.amount ?? cashFeeAmount(order);
+  if (amount <= 0) return wallet;
+  const label =
+    order.shopOrderNumber != null ? `#${order.shopOrderNumber}` : order.id.slice(-6);
+  const entry: WalletEntry = {
+    id: `cfr_${order.id}`,
+    businessId: order.businessId,
+    type: 'credit',
+    amount,
+    orderId: order.id,
+    shopOrderNumber: order.shopOrderNumber,
+    description: `Taxa do pedido ${label} devolvida ao caixa (cancelado)`,
+    createdAt: new Date().toISOString(),
+  };
+  const next: MerchantWallet = {
+    ...wallet,
+    entries: [entry, ...wallet.entries],
+    updatedAt: new Date().toISOString(),
+  };
+  await saveAll(all.map((w) => (w.businessId === order.businessId ? next : w)));
+  return next;
+}
+
 /** Backfill: credita pedidos confirmados antigos ainda sem lançamento. */
 export async function syncWalletFromOrders(
   businessId: string,
@@ -383,6 +537,15 @@ export async function syncWalletFromOrders(
   await ensureWallet(businessId, applicationId);
   for (const order of orders) {
     if (order.businessId !== businessId) continue;
+    if (order.paymentProvider === 'offline' && order.deliveryBy === 'store') {
+      if (order.status === 'cancelado') {
+        await returnCashFeeToWallet(order);
+      } else {
+        await reverseOrderCredit(order);
+        await debitCashFeeFromWallet(order);
+      }
+      continue;
+    }
     if (orderEligibleForCredit(order)) {
       await creditOrderToWallet(order);
     }
@@ -649,7 +812,8 @@ export function formatReceiptText(receipt: WithdrawReceipt): string {
 }
 
 export function entrySignedAmount(e: WalletEntry): number {
-  if (e.type === 'credit') return e.amount;
+  if (e.type === 'credit' || e.type === 'cash_fee_recovery') return e.amount;
+  if (e.type === 'cash_fee') return -e.amount;
   if (e.type === 'reversal') return -e.amount;
   if (e.type === 'withdrawal') {
     if (e.status === 'failed') return 0;

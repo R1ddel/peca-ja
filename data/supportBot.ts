@@ -1,7 +1,9 @@
 /**
  * Assistente de suporte Peça Já (FAQ local).
- * Dúvidas genéricas → bot. Casos específicos → e-mail.
+ * Dúvidas genéricas → bot. Casos específicos → ticket / e-mail.
  */
+
+import { SUPPORT_REPLY_HOURS, SUPPORT_SLA_LINE } from '@/utils/supportSla';
 
 export type SupportTopicId =
   | 'pedido'
@@ -288,13 +290,13 @@ export function replyForTopic(topicId: SupportTopicId): BotReply {
 }
 
 export const BOT_GREETING =
-  'Olá! Sou o assistente Peça Já. Posso tirar dúvidas rápidas sobre pedidos, pagamento, entrega e o clube.\n\nPara casos específicos (reembolso, item faltando), use “Enviar e-mail” — a equipe responde por lá.';
+  `Olá! Sou o assistente de dúvidas rápidas sobre pedido, pagamento e entrega.\n\n${SUPPORT_SLA_LINE}\n\nToque em Ticket para falar com a equipe. A resposta aparece em Seus chamados.`;
 
 export const SUPPORT_EMAIL = 'suporte@pecaja.com.br';
 
 /** Mantidos para não quebrar imports antigos. */
 export const HUMAN_QUEUE_MESSAGE =
-  'Prefira o e-mail de suporte para casos específicos. Toque em “Enviar e-mail”.';
+  `Para uma pessoa, abra um Ticket. Resposta em até ${SUPPORT_REPLY_HOURS}h em Seus chamados. Ou envie e-mail.`;
 
 export const HUMAN_AUTO_REPLY =
-  'Recebemos sua mensagem por e-mail. Em urgências, escreva para suporte@pecaja.com.br.';
+  `Recebemos sua mensagem. Em chamados pelo app, a equipe responde em até ${SUPPORT_REPLY_HOURS}h em Seus chamados. Urgências: suporte@pecaja.com.br.`;

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,7 +17,7 @@ import { Button } from '@/components/Button';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import {
   getShopByApplicationId,
   newMenuItemId,
@@ -24,10 +25,13 @@ import {
 } from '@/utils/merchantShop';
 import { PLATFORM_FEE_MERCHANT_NOTICE } from '@/constants/pricing';
 import { categoryConfig, theme } from '@/constants/theme';
+import { classifyMenuSection, menuSectionsFor } from '@/utils/menuSections';
+import {
+  isCatalogMenuPhoto,
+  MENU_ITEM_FALLBACK_PHOTO,
+  suggestMenuItemPhotos,
+} from '@/utils/menuItemPhotoSuggest';
 import { MenuAddonGroup, MenuItem } from '@/types';
-
-const FALLBACK_IMG =
-  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=300&q=80';
 
 type DraftOption = { id: string; name: string; price: string };
 type DraftGroup = {
@@ -46,26 +50,42 @@ export default function MerchantMenuFormScreen() {
   const { itemId } = useLocalSearchParams<{ itemId?: string }>();
   const { user } = useAuth();
   const [appId, setAppId] = useState<string | null>(null);
+  const [shopCategory, setShopCategory] = useState<string | null>(null);
+  const [sectionLocked, setSectionLocked] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [details, setDetails] = useState('');
   const [category, setCategory] = useState('Destaques');
   const [price, setPrice] = useState('');
-  const [image, setImage] = useState(FALLBACK_IMG);
+  const [image, setImage] = useState(MENU_ITEM_FALLBACK_PHOTO);
+  /** true = loja escolheu foto da galeria; não sobrescrever pela sugestão. */
+  const [ownPhoto, setOwnPhoto] = useState(false);
+  const [suggestPick, setSuggestPick] = useState(0);
   const [popular, setPopular] = useState(false);
   const [convenience, setConvenience] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(itemId ?? null);
   const [addonGroups, setAddonGroups] = useState<DraftGroup[]>([]);
 
+  const photoSuggestion = useMemo(
+    () => suggestMenuItemPhotos(name, category),
+    [name, category]
+  );
+
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const app = await resolveMerchantApplication(user?.email);
+        const { app, shop: foundShop } = await resolveOperatorMerchantContext(user?.email);
         if (!app) return;
         setAppId(app.id);
-        if (!itemId) return;
-        const shop = await getShopByApplicationId(app.id);
+        const shop = foundShop ?? (await getShopByApplicationId(app.id));
+        if (shop) setShopCategory(shop.category);
+        if (!itemId) {
+          setOwnPhoto(false);
+          setSuggestPick(0);
+          setImage(MENU_ITEM_FALLBACK_PHOTO);
+          return;
+        }
         const item = shop?.menu.find((m) => m.id === itemId);
         if (!item) return;
         setEditId(item.id);
@@ -75,6 +95,8 @@ export default function MerchantMenuFormScreen() {
         setCategory(item.category);
         setPrice(String(item.price).replace('.', ','));
         setImage(item.image);
+        setOwnPhoto(!isCatalogMenuPhoto(item.image));
+        setSuggestPick(0);
         setPopular(!!item.popular);
         setConvenience(!!item.convenience);
         setAddonGroups(
@@ -93,6 +115,22 @@ export default function MerchantMenuFormScreen() {
       })();
     }, [user?.email, itemId])
   );
+
+  useEffect(() => {
+    if (sectionLocked || !shopCategory) return;
+    const next = classifyMenuSection(shopCategory, { name, description, details });
+    if (name.trim() && next !== category) setCategory(next);
+  }, [name, description, details, shopCategory, sectionLocked, category]);
+
+  useEffect(() => {
+    setSuggestPick(0);
+  }, [photoSuggestion.key]);
+
+  useEffect(() => {
+    if (ownPhoto) return;
+    const next = photoSuggestion.photos[suggestPick] ?? photoSuggestion.primary;
+    setImage(next);
+  }, [ownPhoto, photoSuggestion.photos, photoSuggestion.primary, suggestPick]);
 
   function addGroup() {
     setAddonGroups((prev) => [
@@ -160,12 +198,19 @@ export default function MerchantMenuFormScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.8,
-      allowsEditing: true,
-      aspect: [4, 3],
+      // allowsEditing trava o retorno em vários Android/Expo Go
+      allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]?.uri) {
       setImage(result.assets[0].uri);
+      setOwnPhoto(true);
     }
+  }
+
+  function useAppSuggestion() {
+    setOwnPhoto(false);
+    setSuggestPick(0);
+    setImage(photoSuggestion.primary);
   }
 
   async function save() {
@@ -213,7 +258,13 @@ export default function MerchantMenuFormScreen() {
         price: Math.round(parsed * 100) / 100,
         image,
         images: [image],
-        category: category.trim() || 'Geral',
+        category: sectionLocked
+          ? category.trim() || 'Outros'
+          : classifyMenuSection(shopCategory, {
+              name: trimmed,
+              description: description.trim(),
+              details: details.trim(),
+            }),
         popular,
         convenience,
         addonGroups: groups.length ? groups : undefined,
@@ -236,19 +287,95 @@ export default function MerchantMenuFormScreen() {
         fallbackHref="/merchant/menu"
       />
       <KeyboardScreen contentContainerStyle={styles.content}>
+        <Label>Nome *</Label>
+        <Field value={name} onChangeText={setName} placeholder="Ex.: Feijoada, Pizza de calabresa" />
+
+        <Label>Foto do item</Label>
+        <Text style={styles.photoHint}>
+          {ownPhoto
+            ? 'Você escolheu a foto da loja. Pode voltar à sugestão do app a qualquer momento.'
+            : name.trim()
+              ? photoSuggestion.matched
+                ? `Sugestão pelo nome: ${photoSuggestion.label}. Toque numa miniatura ou envie a foto da loja.`
+                : 'Não reconhecemos o prato pelo nome — foto genérica. Envie a da loja se tiver.'
+              : 'Digite o nome para sugerirmos uma foto. Sem foto da loja, usamos a sugestão.'}
+        </Text>
+
         <TouchableOpacity style={styles.photo} onPress={() => void pickImage()} activeOpacity={0.9}>
           <Image source={{ uri: image }} style={styles.photoImg} />
           <View style={styles.photoBadge}>
             <Ionicons name="camera" size={16} color="#fff" />
-            <Text style={styles.photoBadgeText}>Trocar foto</Text>
+            <Text style={styles.photoBadgeText}>
+              {ownPhoto ? 'Trocar minha foto' : 'Usar foto da loja'}
+            </Text>
           </View>
+          {!ownPhoto && (
+            <View style={styles.suggestBadge}>
+              <Ionicons name="sparkles" size={12} color="#fff" />
+              <Text style={styles.suggestBadgeText}>Sugestão</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
-        <Label>Nome *</Label>
-        <Field value={name} onChangeText={setName} placeholder="Ex.: X-Bacon" />
+        {!ownPhoto && photoSuggestion.photos.length > 1 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.suggestRow}
+          >
+            {photoSuggestion.photos.map((uri, i) => {
+              const on = i === suggestPick;
+              return (
+                <TouchableOpacity
+                  key={`${photoSuggestion.key}-${i}`}
+                  style={[styles.suggestThumbWrap, on && styles.suggestThumbOn]}
+                  onPress={() => setSuggestPick(i)}
+                  activeOpacity={0.85}
+                >
+                  <Image source={{ uri }} style={styles.suggestThumb} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
 
-        <Label>Categoria</Label>
-        <Field value={category} onChangeText={setCategory} placeholder="Ex.: Lanches" />
+        {ownPhoto ? (
+          <TouchableOpacity style={styles.suggestBack} onPress={useAppSuggestion} activeOpacity={0.85}>
+            <Ionicons name="images-outline" size={16} color={theme.colors.primary} />
+            <Text style={styles.suggestBackText}>
+              Usar sugestão do app
+              {photoSuggestion.matched ? ` (${photoSuggestion.label})` : ''}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <Label>Seção do cardápio</Label>
+        <Text style={styles.sectionHint}>
+          {name.trim()
+            ? `Entra automaticamente em ${category}. Toque só se quiser corrigir.`
+            : 'A seção é escolhida pelo nome do produto.'}
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sectionRow}
+        >
+          {menuSectionsFor(shopCategory).map((section) => {
+            const on = section === category;
+            return (
+              <TouchableOpacity
+                key={section}
+                style={[styles.sectionChip, on && styles.sectionChipOn]}
+                onPress={() => {
+                  setSectionLocked(true);
+                  setCategory(section);
+                }}
+              >
+                <Text style={[styles.sectionChipText, on && styles.sectionChipTextOn]}>{section}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         <Label>Preço (R$) *</Label>
         <Field
@@ -406,11 +533,17 @@ function Field(props: React.ComponentProps<typeof TextInput>) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
   content: { padding: theme.spacing.lg, paddingBottom: theme.spacing.xxl },
+  photoHint: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.sm,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
   photo: {
     height: 160,
     borderRadius: theme.radius.xl,
     overflow: 'hidden',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
     backgroundColor: theme.colors.borderLight,
   },
   photoImg: { width: '100%', height: '100%' },
@@ -427,6 +560,65 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.full,
   },
   photoBadgeText: { color: '#fff', fontSize: 12, fontWeight: theme.fontWeight.semibold },
+  suggestBadge: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: theme.radius.full,
+  },
+  suggestBadgeText: { color: '#fff', fontSize: 11, fontWeight: theme.fontWeight.semibold },
+  suggestRow: { gap: 8, paddingBottom: 8 },
+  suggestThumbWrap: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  suggestThumbOn: { borderColor: theme.colors.primary },
+  suggestThumb: { width: 64, height: 64, backgroundColor: theme.colors.borderLight },
+  suggestBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: theme.spacing.md,
+    paddingVertical: 8,
+  },
+  suggestBackText: {
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  sectionHint: {
+    color: theme.colors.textSecondary,
+    fontSize: theme.fontSize.sm,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  sectionRow: { gap: 8, paddingBottom: 4 },
+  sectionChip: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: theme.colors.surface,
+  },
+  sectionChipOn: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+  },
+  sectionChipText: {
+    color: theme.colors.text,
+    fontWeight: theme.fontWeight.bold,
+    fontSize: 13,
+  },
+  sectionChipTextOn: { color: '#fff' },
   feeNote: {
     flexDirection: 'row',
     alignItems: 'flex-start',

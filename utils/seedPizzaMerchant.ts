@@ -10,6 +10,7 @@ import {
   MerchantShop,
 } from '@/utils/merchantShop';
 import {
+  deletePromo,
   listPromosByApplication,
   upsertPromo,
 } from '@/utils/merchantPromos';
@@ -446,6 +447,49 @@ export function shopLooksLikePizzaria(shop: {
 }): boolean {
   const blob = `${shop.name || ''} ${(shop.tags || []).join(' ')}`.toLowerCase();
   return /pizza|pizzaria/.test(blob);
+}
+
+const SEEDED_PROMO_CODES = new Set([
+  'FRETEPIZZA',
+  'PIZZA10',
+  'BEMVINDOPIZZA',
+  'COMBO15',
+  'NOITE10',
+]);
+
+const SEEDED_PROMO_TITLES = new Set(['Frete grátis acima de R$ 80', 'Frete grátis na pizzaria']);
+
+export function isSeededMenuItem(item: MenuItem): boolean {
+  return (
+    item.id.startsWith('seed_') ||
+    item.name === 'Produto destaque' ||
+    (item.description || '').includes('Primeiro item do cardápio')
+  );
+}
+
+/** Tira cardápio e cupons que o app colocou sozinho. O que a loja criou fica. */
+export async function removeSeededMerchantContent(
+  applicationId: string
+): Promise<MerchantShop | null> {
+  const shop = await getShopByApplicationId(applicationId);
+  if (!shop) return null;
+
+  const menu = (shop.menu || []).filter((item) => !isSeededMenuItem(item));
+  let next = shop;
+  if (menu.length !== (shop.menu || []).length) {
+    const patched = await patchShop(applicationId, { menu });
+    if (patched) next = patched;
+  }
+
+  const promos = await listPromosByApplication(applicationId);
+  for (const promo of promos) {
+    const code = (promo.code || '').toUpperCase();
+    if (SEEDED_PROMO_CODES.has(code) || (!promo.code && SEEDED_PROMO_TITLES.has(promo.title))) {
+      await deletePromo(promo.id);
+    }
+  }
+
+  return (await getShopByApplicationId(applicationId)) ?? next;
 }
 
 /** True se ainda não tem o cardápio seed de pizzaria. */

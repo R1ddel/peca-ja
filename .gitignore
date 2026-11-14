@@ -30,9 +30,14 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files / secrets
 .env
-.env*.local
+.env.*
+!.env.example
+*.pem
+*payout*keys*
+.tmp-qr/
+pecaja-expo-qr.png
 
 # typescript
 *.tsbuildinfo

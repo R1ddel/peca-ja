@@ -3,7 +3,7 @@
  * Texto-base operacional. Não substitui parecer de advogado inscrito na OAB
  * sobre o caso concreto da pessoa jurídica titular da marca.
  */
-export const DRIVER_TERMS_VERSION = '2026.08.1';
+export const DRIVER_TERMS_VERSION = '2026.10.2';
 
 export const DRIVER_TERMS_TITLE =
   'Termo de Responsabilidade, Isenção e Adesão ao Peça Já — Entregador';
@@ -73,6 +73,8 @@ d) NÃO há subordinação jurídica: a Plataforma NÃO é empregadora, NÃO dá
 4.1. Depois de ACEITAR uma corrida, o Entregador compromete-se a: (i) respeito a consumidores e comerciantes; (ii) cuidado do pedido sob sua custódia; (iii) uso dos códigos de retirada/entrega; (iv) não fraudar, não substituir produtos, não cobrar extra não autorizado.
 
 4.2. Embriaguez ao volante, ilícitos, agressão, discriminação ou fraude autorizam o desligamento da ferramenta, sem prejuízo da lei penal e civil. Isso é faculdade contratual de quem cede o software, não “justa causa” de emprego.
+
+4.3. PRAZO DA ENTREGA E TOLERÂNCIA. O prazo da corrida é o que estava estabelecido quando o pedido saiu do comércio. Esse prazo pode variar. O que não varia são os 20 minutos de tolerância depois que ele acaba. Se a entrega não for confirmada nesse tempo, o consumidor pode cancelar e receber o reembolso, ou continuar esperando. O cancelamento não é automático. O Entregador é avisado do reembolso e do motivo, o pedido fica cancelado e o frete dessa corrida não é pago.
 
 5. ACIDENTES, QUEDAS, TERCEIROS E ISENÇÃO (NA MEDIDA DA LEI)
 

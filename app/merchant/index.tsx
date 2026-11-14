@@ -20,6 +20,7 @@ import {
   MerchantApplication,
   formatPlanPaidUntil,
   isMerchantPanelUnlocked,
+  isMerchantSubscriptionActive,
   merchantOnboardingGate,
 } from '@/utils/partners';
 import { buildMerchantInsights } from '@/utils/merchantInsights';
@@ -28,15 +29,17 @@ import { formatOrderTime, formatWaitLabel } from '@/utils/datetime';
 import { formatPrice } from '@/data/businesses';
 import { orderStatusConfig, theme } from '@/constants/theme';
 import { MERCHANT_PLANS, formatPlanPrice } from '@/constants/plans';
-import { listPendingAccessRequests, logoutStaff, StaffAccessRequest } from '@/utils/merchantTeam';
+import {
+  getValidStaffSession,
+  listPendingAccessRequests,
+  staffHomePath,
+  StaffAccessRequest,
+} from '@/utils/merchantTeam';
 import { listTodayPunches, StaffPunch } from '@/utils/merchantPunch';
 import { PunchLogBlock } from '@/components/PunchLogBlock';
 import { StaffAccessRequestsBlock } from '@/components/StaffAccessRequestsBlock';
 import { countMerchantUnread } from '@/services/orderChat';
-import {
-  needsPizzaSeed,
-  seedPizzaMerchantCatalog,
-} from '@/utils/seedPizzaMerchant';
+import { removeSeededMerchantContent } from '@/utils/seedPizzaMerchant';
 import { Order } from '@/types';
 import {
   ActiveRunsBlock,
@@ -94,20 +97,54 @@ export default function MerchantHomeScreen() {
   const load = useCallback(async () => {
     // Não piscar spinner a cada sync de pedidos/frota.
     if (!hasLoadedRef.current) setLoading(true);
+    let leavingForStaffPanel = false;
     try {
-      // Limpa sessão antiga de PIN/função pra não bagunçar a loja do dono.
-      await logoutStaff();
+      // Cozinha e caixa que voltam para esta home mantêm o PIN e seguem no painel da função.
+      const staffSession = await getValidStaffSession();
+      if (staffSession && (staffSession.role === 'kitchen' || staffSession.role === 'cashier')) {
+        leavingForStaffPanel = true;
+        router.replace(staffHomePath(staffSession.role) as any);
+        return;
+      }
       const { app: foundApp, shop: foundShop } = await resolveActiveMerchantContext(user?.email);
       let nextShop = foundShop;
-      if (foundApp && nextShop && needsPizzaSeed(nextShop)) {
+      let merchantApp = foundApp;
+      if (merchantApp && !isMerchantSubscriptionActive(merchantApp)) {
         try {
-          const seeded = await seedPizzaMerchantCatalog(foundApp.id);
-          if (seeded) nextShop = seeded.shop;
+          const { fetchPaymentsJson } = await import('@/services/paymentsFetch');
+          const { confirmMerchantPlanPayment } = await import('@/utils/partners');
+          const hit = await fetchPaymentsJson('/api/payments/plan-status', {
+            method: 'POST',
+            body: JSON.stringify({ applicationId: merchantApp.id }),
+            timeoutMs: 8_000,
+          });
+          if (hit?.json?.ok && hit.json.paid && hit.json.payment?.id) {
+            const synced = await confirmMerchantPlanPayment(merchantApp.id, {
+              paymentId: String(hit.json.payment.id),
+              method: hit.json.payment.method === 'card' ? 'card' : 'pix',
+            });
+            if (synced) merchantApp = synced;
+          }
         } catch {
-          // seed opcional
+          /* API offline */
         }
       }
-      setApp(foundApp);
+      if (merchantApp && nextShop) {
+        try {
+          const cleaned = await removeSeededMerchantContent(merchantApp.id);
+          if (cleaned) nextShop = cleaned;
+        } catch {
+          /* limpeza opcional */
+        }
+        const active = isMerchantSubscriptionActive(merchantApp);
+        const billingPatch: { planPaidUntil?: string; isOpen?: boolean } = {
+          planPaidUntil: merchantApp.planPaidUntil,
+        };
+        if (!active) billingPatch.isOpen = false;
+        const billed = await patchShop(merchantApp.id, billingPatch);
+        if (billed) nextShop = billed;
+      }
+      setApp(merchantApp);
       setShop(nextShop);
       if (nextShop) {
         const pending = await listPendingAccessRequests(nextShop.businessId);
@@ -123,8 +160,10 @@ export default function MerchantHomeScreen() {
         setChatUnread(0);
       }
     } finally {
-      hasLoadedRef.current = true;
-      setLoading(false);
+      if (!leavingForStaffPanel) {
+        hasLoadedRef.current = true;
+        setLoading(false);
+      }
     }
   }, [user?.email]);
 
@@ -155,6 +194,22 @@ export default function MerchantHomeScreen() {
     if (!shop) return [];
     return listMerchantActiveRuns(myOrders, shop.businessId).slice(0, 6);
   }, [myOrders, shop]);
+
+  const justDelivered = useMemo(() => {
+    if (activeRuns.length) return null;
+    const windowMs = 45 * 60 * 1000;
+    const done = myOrders.filter((o) => {
+      if (o.status !== 'entregue') return false;
+      const t = +new Date(o.deliveryVerifiedAt || o.updatedAt || 0);
+      return Number.isFinite(t) && Date.now() - t < windowMs;
+    });
+    done.sort(
+      (a, b) =>
+        +new Date(b.deliveryVerifiedAt || b.updatedAt) -
+        +new Date(a.deliveryVerifiedAt || a.updatedAt)
+    );
+    return done[0] ?? null;
+  }, [activeRuns.length, myOrders]);
 
   const awaitingPickup = useMemo(() => {
     if (!shop) return [];
@@ -215,6 +270,63 @@ export default function MerchantHomeScreen() {
             onPress={() => router.push('/partner' as any)}
           >
             <Text style={[styles.emptyBtnText, { color: ACCENT }]}>Cadastrar minha loja</Text>
+          </TouchableOpacity>
+        </View>
+      </MobileShell>
+    );
+  }
+
+  if (!isMerchantPanelUnlocked(app)) {
+    const expired =
+      !!app.planPaidUntil && new Date(app.planPaidUntil).getTime() <= nowMs;
+    const gate = merchantOnboardingGate(app);
+    const gateHref =
+      gate === 'pay'
+        ? '/partner/pay'
+        : gate === 'terms'
+          ? '/partner/terms'
+          : gate === 'plan'
+            ? '/partner/plans'
+            : '/partner';
+    const lockedCopy =
+      gate === 'plan'
+        ? {
+            body: 'A loja fica inativa até você escolher um plano.',
+            button: 'Escolher plano',
+          }
+        : gate === 'terms'
+          ? {
+              body: 'A mensalidade está em dia. Falta assinar o termo para liberar a loja.',
+              button: 'Assinar termo',
+            }
+          : gate === 'pay'
+            ? expired
+              ? {
+                  body: 'Os 30 dias da mensalidade acabaram. A loja fica inativa até o pagamento.',
+                  button: 'Pagar mensalidade',
+                }
+              : {
+                  body: 'A loja fica inativa até a mensalidade do mês ser paga.',
+                  button: 'Pagar mensalidade',
+                }
+            : {
+                body: 'O cadastro desta loja ainda não está liberado.',
+                button: 'Ver cadastro',
+              };
+    return (
+      <MobileShell style={styles.screen}>
+        <BackHeader title="Painel do comércio" fallbackHref="/(tabs)/profile" />
+        <View style={styles.emptyBox}>
+          <Ionicons name="lock-closed-outline" size={40} color={theme.colors.textMuted} />
+          <Text style={styles.emptyTitle}>{shop.name}</Text>
+          <Text style={styles.emptyText}>{lockedCopy.body}</Text>
+          <TouchableOpacity
+            style={styles.emptyBtn}
+            onPress={() =>
+              router.push({ pathname: gateHref as any, params: { id: app.id } })
+            }
+          >
+            <Text style={styles.emptyBtnText}>{lockedCopy.button}</Text>
           </TouchableOpacity>
         </View>
       </MobileShell>
@@ -315,6 +427,22 @@ export default function MerchantHomeScreen() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
+
+        {justDelivered ? (
+          <TouchableOpacity
+            style={styles.deliveredBanner}
+            activeOpacity={0.9}
+            onPress={() => openOrder(justDelivered.id)}
+          >
+            <Ionicons name="checkmark-circle" size={22} color={ACCENT} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.deliveredTitle}>Pedido entregue</Text>
+              <Text style={styles.deliveredSub} numberOfLines={1}>
+                {merchantOrderLabel(justDelivered)} · o código do cliente foi confirmado
+              </Text>
+            </View>
           </TouchableOpacity>
         ) : null}
 
@@ -607,6 +735,27 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
+  },
+  deliveredBanner: {
+    marginTop: 12,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 16,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  deliveredTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  deliveredSub: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
   },
   pickupBanner: {
     marginTop: 12,

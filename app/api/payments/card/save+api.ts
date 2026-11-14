@@ -1,4 +1,5 @@
 import { isMercadoPagoConfigured, mpFetch } from '@/services/mercadopagoServer';
+import { requirePaymentSession } from '@/services/paymentAuth';
 
 type Body = {
   number?: string;
@@ -9,6 +10,7 @@ type Body = {
   kind?: 'credit' | 'debit';
   email?: string;
   identificationNumber?: string;
+  token?: string;
 };
 
 function onlyDigits(value: string): string {
@@ -78,6 +80,10 @@ async function findOrCreateCustomer(email: string, name: string, cpf: string) {
 
 export async function POST(request: Request) {
   try {
+    const rawBody = (await request.json().catch(() => ({}))) as Body;
+    const gate = await requirePaymentSession(request, rawBody);
+    if (!gate.ok) return gate.response;
+
     if (!isMercadoPagoConfigured()) {
       return Response.json(
         {
@@ -89,7 +95,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as Body;
+    const body = rawBody;
     const number = onlyDigits(String(body.number || ''));
     let holderName = String(body.holderName || '').trim();
     const cvv = onlyDigits(String(body.cvv || ''));
@@ -101,8 +107,8 @@ export async function POST(request: Request) {
     let expYear = Number(onlyDigits(String(body.expYear || '')));
     if (expYear > 0 && expYear < 100) expYear += 2000;
 
-    const testCard = isMpTestCard(number);
-    // Cartões de teste: nome APRO + CPF oficial do MP
+    const allowTestCards = process.env.MP_MODE === 'sandbox' && process.env.NODE_ENV !== 'production';
+    const testCard = allowTestCards && isMpTestCard(number);
     if (testCard) {
       holderName = 'APRO';
       cpf = '12345678909';

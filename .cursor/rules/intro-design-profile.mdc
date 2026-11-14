@@ -40,4 +40,4 @@ Tratar a intro como peça de marketing (nível App Store / Mibo Smart), não com
 
 ## Limites do projeto
 
-Expo SDK 54, sem reanimated/worklets, não alterar `app/_layout.tsx` / `app/(tabs)/_layout.tsx` sem autorização.
+Expo SDK 57, sem reanimated/worklets, não alterar `app/_layout.tsx` / `app/(tabs)/_layout.tsx` sem autorização.

@@ -18,7 +18,7 @@ import {
   saveFleetState,
   withFleetLock,
 } from '@/services/fleetStore';
-import { newSessionToken } from '@/services/platformCrypto';
+import { newSessionToken, tokensMatch } from '@/services/platformCrypto';
 
 const ONLINE_TTL_MS = 90_000;
 
@@ -29,18 +29,22 @@ export function sanitizeOrderForFleet(
   const assigned =
     viewerFleetId &&
     (order.driverId === viewerFleetId || order.offeredToDriverId === viewerFleetId);
-  if (assigned) return order;
-  const {
-    pickupCode: _p,
-    deliveryCode: _d,
-    customerPhone: _c,
-    ...rest
-  } = order as Order & {
-    pickupCode?: string;
-    deliveryCode?: string;
-    customerPhone?: string;
-  };
-  return rest as Order;
+  if (!assigned) {
+    const {
+      pickupCode: _p,
+      deliveryCode: _d,
+      customerPhone: _c,
+      ...rest
+    } = order as Order & {
+      pickupCode?: string;
+      deliveryCode?: string;
+      customerPhone?: string;
+    };
+    return rest as Order;
+  }
+  // O motoboy mostra o código de retirada na loja. O código do cliente fica só com o cliente.
+  const { deliveryCode: _delivery, ...forDriver } = order;
+  return forDriver;
 }
 
 export function publicDriversMap(
@@ -62,7 +66,8 @@ export function verifyDriverToken(
 ): boolean {
   if (!fleetId || !driverToken) return false;
   const d = state.drivers[fleetId];
-  return !!d?.sessionToken && d.sessionToken === driverToken;
+  if (!d?.sessionToken) return false;
+  return tokensMatch(d.sessionToken, driverToken);
 }
 
 function isMockFleetDriverId(driverId?: string | null): boolean {
@@ -82,6 +87,7 @@ function onlineDrivers(
   const out: DriverCandidate[] = [];
   for (const d of Object.values(state.drivers)) {
     if (!d?.fleetId) continue;
+    if (d.fleetId.startsWith('proj2y_')) continue;
     if (d.blocked) continue;
     if (!d.online) continue;
     const age = nowMs - +new Date(d.lastSeenAt || 0);
@@ -93,6 +99,7 @@ function onlineDrivers(
       phone: d.phone || '',
       deliveriesToday: countDeliveriesToday(orders, d.fleetId),
       lastOfferAt: d.lastOfferAt ?? 0,
+      city: d.city,
     });
   }
   return out;
@@ -139,16 +146,22 @@ export async function fleetSync(input: {
 export async function fleetHeartbeat(input: {
   fleetId: string;
   applicationId: string;
-  name: string;
-  phone: string;
   online: boolean;
   latitude?: number;
   longitude?: number;
   heading?: number;
-}): Promise<{ state: FleetState; blocked: boolean; reason?: string; driverToken?: string }> {
+}): Promise<{
+  state: FleetState;
+  blocked: boolean;
+  reason?: string;
+  missing?: boolean;
+}> {
   return withFleetLock(async (state) => {
     const prev = state.drivers[input.fleetId];
-    if (prev?.blocked) {
+    if (!prev) {
+      return { state, blocked: false, missing: true };
+    }
+    if (prev.blocked) {
       return {
         state,
         blocked: true,
@@ -156,18 +169,12 @@ export async function fleetHeartbeat(input: {
       };
     }
     const presence: FleetDriverPresence = {
-      fleetId: input.fleetId,
-      applicationId: input.applicationId,
-      name: input.name,
-      phone: input.phone,
+      ...prev,
       online: !!input.online,
       lastSeenAt: nowIso(),
-      lastOfferAt: prev?.lastOfferAt,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      heading: input.heading,
-      blocked: false,
-      sessionToken: prev?.sessionToken || newSessionToken(),
+      latitude: input.latitude ?? prev.latitude,
+      longitude: input.longitude ?? prev.longitude,
+      heading: input.heading ?? prev.heading,
     };
     let next: FleetState = {
       ...state,
@@ -177,7 +184,123 @@ export async function fleetHeartbeat(input: {
       next = runDispatch(next);
     }
     const saved = await saveFleetState(next);
-    return { state: saved, blocked: false, driverToken: presence.sessionToken };
+    return { state: saved, blocked: false };
+  });
+}
+
+/** Emite sessionToken só após prova de cadastro aprovado (driver_auth). */
+export async function fleetIssueDriverSession(input: {
+  fleetId: string;
+  applicationId: string;
+  name?: string;
+  phone?: string;
+  city?: string;
+}): Promise<{ state: FleetState; driverToken: string; blocked: boolean; reason?: string }> {
+  return withFleetLock(async (state) => {
+    const prev = state.drivers[input.fleetId];
+    if (prev?.blocked) {
+      return {
+        state,
+        driverToken: '',
+        blocked: true,
+        reason: prev.blockedReason || 'Conta bloqueada pelo suporte.',
+      };
+    }
+    const sessionToken = newSessionToken();
+    const presence: FleetDriverPresence = {
+      fleetId: input.fleetId,
+      applicationId: prev?.applicationId || input.applicationId || input.fleetId,
+      name: (input.name?.trim() || prev?.name || 'Entregador').slice(0, 80),
+      phone: (input.phone?.trim() || prev?.phone || '').slice(0, 32),
+      online: prev?.online || false,
+      lastSeenAt: nowIso(),
+      lastOfferAt: prev?.lastOfferAt,
+      latitude: prev?.latitude,
+      longitude: prev?.longitude,
+      heading: prev?.heading,
+      city: input.city?.trim() || prev?.city,
+      blocked: false,
+      blockedReason: undefined,
+      sessionToken,
+    };
+    const saved = await saveFleetState({
+      ...state,
+      drivers: { ...state.drivers, [input.fleetId]: presence },
+    });
+    return { state: saved, driverToken: sessionToken, blocked: false };
+  });
+}
+
+/** Apaga sessionToken de todos os motoristas (revoga tokens emitidos sem prova). */
+export async function revokeAllDriverSessionTokens(): Promise<number> {
+  return withFleetLock(async (state) => {
+    let n = 0;
+    const drivers = { ...state.drivers };
+    for (const [id, d] of Object.entries(drivers)) {
+      if (d?.sessionToken) {
+        drivers[id] = { ...d, sessionToken: undefined, online: false };
+        n += 1;
+      }
+    }
+    await saveFleetState({ ...state, drivers });
+    return n;
+  });
+}
+
+const PROBE_FLEET_IDS = new Set([
+  'SMITH-TEST-001',
+  'probe-2',
+  'state-check',
+  'sm-qa-probe',
+  'sm-qa-nonexistent-fleet',
+]);
+
+/** Remove motoristas de teste/probe deixados por auditoria. */
+export async function purgeProbeDrivers(): Promise<number> {
+  return withFleetLock(async (state) => {
+    const drivers = { ...state.drivers };
+    let n = 0;
+    for (const id of Object.keys(drivers)) {
+      if (PROBE_FLEET_IDS.has(id) || id.startsWith('probe-') || id.startsWith('SMITH-TEST')) {
+        delete drivers[id];
+        n += 1;
+      }
+    }
+    if (n) await saveFleetState({ ...state, drivers });
+    return n;
+  });
+}
+
+/** Atualiza perfil do motorista só com sessão autenticada. */
+export async function fleetUpsertDriverProfile(input: {
+  fleetId: string;
+  applicationId?: string;
+  name?: string;
+  phone?: string;
+  city?: string;
+}): Promise<FleetState> {
+  return withFleetLock(async (state) => {
+    const prev = state.drivers[input.fleetId];
+    const nextPresence: FleetDriverPresence = {
+      fleetId: input.fleetId,
+      applicationId: input.applicationId || prev?.applicationId || input.fleetId,
+      name: (input.name?.trim() || prev?.name || 'Entregador').slice(0, 80),
+      phone: (input.phone?.trim() || prev?.phone || '').slice(0, 32),
+      online: prev?.online || false,
+      lastSeenAt: prev?.lastSeenAt || nowIso(),
+      lastOfferAt: prev?.lastOfferAt,
+      latitude: prev?.latitude,
+      longitude: prev?.longitude,
+      heading: prev?.heading,
+      city: input.city?.trim() || prev?.city,
+      blocked: prev?.blocked || false,
+      blockedReason: prev?.blockedReason,
+      sessionToken: prev?.sessionToken,
+    };
+    return saveFleetState({
+      ...state,
+      drivers: { ...state.drivers, [input.fleetId]: nextPresence },
+    });
   });
 }
 

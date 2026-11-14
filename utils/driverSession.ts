@@ -60,7 +60,7 @@ export async function getRememberedDriverLogin(): Promise<DriverRememberedLogin 
   }
 }
 
-export async function setRememberedDriverLogin(email: string, _password?: string): Promise<void> {
+export async function setRememberedDriverLogin(email: string): Promise<void> {
   const payload: DriverRememberedLogin = {
     email: email.trim().toLowerCase(),
     savedAt: new Date().toISOString(),
@@ -120,4 +120,19 @@ export async function getDriverForceWipeToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * O login pede uma limpeza única por token. A função não existia e a tela quebrava.
+ * Marca o token como já aplicado e não apaga cadastros atuais.
+ */
+export async function maybeForceWipeDriverData(token: string): Promise<boolean> {
+  const current = await getDriverForceWipeToken();
+  if (current === token) return false;
+  try {
+    await AsyncStorage.setItem(FORCE_WIPE_KEY, token);
+  } catch {
+    /* ignore */
+  }
+  return false;
 }

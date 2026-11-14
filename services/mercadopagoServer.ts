@@ -192,18 +192,87 @@ function mapPayoutStatus(raw: string | undefined | null): PixPayoutResult['statu
   if (['rejected', 'cancelled', 'canceled', 'failed', 'error', 'refunded'].includes(s)) {
     return 'failed';
   }
-  if (['in_process', 'processing', 'pending', 'authorized', 'created', 'queued'].includes(s)) {
+  if (
+    ['in_process', 'processing', 'transaction_in_process', 'pending', 'authorized', 'created', 'queued'].includes(
+      s
+    )
+  ) {
     return s === 'pending' || s === 'created' || s === 'queued' ? 'pending' : 'processing';
   }
   return 'pending';
 }
 
+function readServerEnvName(name: string): string {
+  const env = process.env as Record<string, string | undefined>;
+  return (env[name] || '').trim();
+}
+
+function payoutRef(raw: string): string {
+  const clean = String(raw || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 50);
+  return clean || `wd${Date.now()}`;
+}
+
+function payoutText(raw: string): string {
+  const clean = String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 _-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return clean || 'Peca Ja saque';
+}
+
+function mpPixKeyType(type: PixPayoutRequest['pixKeyType']): string {
+  switch (type) {
+    case 'cnpj':
+      return 'CNPJ';
+    case 'email':
+      return 'EMAIL';
+    case 'phone':
+      return 'PHONE';
+    case 'random':
+      return 'PIX_CODE';
+    default:
+      return 'CPF';
+  }
+}
+
+function pemToDer(pem: string): Uint8Array {
+  const normalized = pem.replace(/\\n/g, '\n');
+  const b64 = normalized.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(b64, 'base64'));
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToB64(bytes: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+/** Assina o body exatamente como o Mercado Pago exige em produção (Ed25519). */
+async function signPayoutBody(body: string): Promise<string | null> {
+  const pem = readServerEnvName('MP_PAYOUT_PRIVATE_KEY');
+  if (!pem) return null;
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    throw Object.assign(new Error('Este servidor não assina o saque Pix.'), { status: 503 });
+  }
+  const key = await subtle.importKey('pkcs8', pemToDer(pem), { name: 'Ed25519' }, false, ['sign']);
+  const sig = await subtle.sign({ name: 'Ed25519' }, key, new TextEncoder().encode(body));
+  return bytesToB64(new Uint8Array(sig));
+}
+
 /**
  * Envia Pix-out (saque) pela conta da plataforma no Mercado Pago.
- * Produto "Payouts · Pix transfer" precisa estar liberado na conta.
+ * Produto Payouts precisa estar liberado. Produção exige assinatura Ed25519.
  *
- * Endpoint padrão: POST /v1/transaction_intents
- * Override: MP_PAYOUT_PATH
+ * POST /v1/payouts
  * Simulação (dev): MP_PAYOUT_MODE=simulate
  */
 export async function createPixPayout(req: PixPayoutRequest): Promise<PixPayoutResult> {
@@ -246,74 +315,52 @@ export async function createPixPayout(req: PixPayoutRequest): Promise<PixPayoutR
     });
   }
 
-  const path = (process.env.MP_PAYOUT_PATH || '/v1/transaction_intents').trim();
-  const pixKeyType = String(req.pixKeyType || 'random').toUpperCase();
+  const ref = payoutRef(req.externalReference);
   const body = {
-    transaction_amount: amount,
-    amount,
-    currency_id: 'BRL',
-    description: (req.description || 'Peça Já · Saque comerciante').slice(0, 230),
-    external_reference: req.externalReference,
-    payment_method_id: 'pix',
-    payment_method: {
-      id: 'pix',
-      type: 'bank_transfer',
-      pix_key: req.pixKey,
-      pix_key_type: pixKeyType,
-    },
-    point_of_interaction: {
-      type: 'PIX',
-      transaction_data: {
-        pix_key: req.pixKey,
-        pix_key_type: pixKeyType,
+    external_reference: ref,
+    description: payoutText(req.description || 'Peca Ja saque'),
+    transactions: [
+      {
+        description: payoutText(req.holderName ? `Saque ${req.holderName}` : 'Saque Peca Ja'),
+        type: 'pix',
+        pix: {
+          type: mpPixKeyType(req.pixKeyType),
+          chave: String(req.pixKey || '').trim(),
+        },
+        amount: {
+          currency: 'BRL',
+          value: amount,
+        },
+        external_reference: ref,
       },
-    },
-    beneficiary: {
-      name: req.holderName,
-      identification: {
-        type: doc.length === 14 ? 'CNPJ' : 'CPF',
-        number: doc,
-      },
-      pix_key: req.pixKey,
-      pix_key_type: pixKeyType,
-    },
-    payee: {
-      first_name: req.holderName.split(/\s+/)[0] || req.holderName,
-      last_name: req.holderName.split(/\s+/).slice(1).join(' ') || req.holderName,
-      identification: {
-        type: doc.length === 14 ? 'CNPJ' : 'CPF',
-        number: doc,
-      },
-    },
-    metadata: {
-      source: 'peca-ja',
-      purpose: 'merchant_withdraw',
-      pix_key: req.pixKey,
-      pix_key_type: req.pixKeyType,
-    },
+    ],
   };
+  const rawBody = JSON.stringify(body);
+  const signature = await signPayoutBody(rawBody);
+  if (!signature) {
+    throw Object.assign(
+      new Error(
+        'Saque real ainda não assinado. O Mercado Pago exige a chave privada Ed25519 em produção. O Pix não saiu e o saldo não foi debitado.'
+      ),
+      { status: 503, body: { code: 'PAYOUT_SIGNATURE' } }
+    );
+  }
 
   try {
-    const payout = await mpFetch(path, {
+    const payout = await mpFetch('/v1/payouts', {
       method: 'POST',
       headers: {
         'X-Idempotency-Key': req.idempotencyKey,
+        'X-enforce-signature': 'true',
+        'X-signature': signature,
       },
-      body: JSON.stringify(body),
+      body: rawBody,
     });
 
-    const payoutId = String(
-      payout?.id ?? payout?.transaction_intent_id ?? payout?.payout_id ?? req.externalReference
-    );
-    const rawStatus = String(
-      payout?.status ?? payout?.transaction_status ?? payout?.state ?? 'pending'
-    );
-    const endToEndId =
-      payout?.transaction_details?.transaction_id ||
-      payout?.point_of_interaction?.transaction_data?.end_to_end_id ||
-      payout?.end_to_end_id ||
-      payout?.external_reference ||
-      null;
+    const tx = Array.isArray(payout?.transactions) ? payout.transactions[0] : null;
+    const payoutId = String(payout?.id ?? tx?.id ?? ref);
+    const rawStatus = String(tx?.status ?? payout?.status ?? 'created');
+    const endToEndId = tx?.id ? String(tx.id) : null;
 
     return {
       payoutId,
@@ -350,17 +397,12 @@ export async function getPixPayout(payoutId: string): Promise<PixPayoutResult> {
       simulated: true,
     };
   }
-  const pathBase = (process.env.MP_PAYOUT_PATH || '/v1/transaction_intents').trim();
-  const base = pathBase.replace(/\/$/, '');
-  const payout = await mpFetch(`${base}/${encodeURIComponent(payoutId)}`, {
+  const payout = await mpFetch(`/v1/payouts/${encodeURIComponent(payoutId)}`, {
     method: 'GET',
   });
-  const rawStatus = String(payout?.status ?? payout?.transaction_status ?? 'pending');
-  const endToEndId =
-    payout?.transaction_details?.transaction_id ||
-    payout?.point_of_interaction?.transaction_data?.end_to_end_id ||
-    payout?.end_to_end_id ||
-    null;
+  const tx = Array.isArray(payout?.transactions) ? payout.transactions[0] : null;
+  const rawStatus = String(tx?.status ?? payout?.status ?? 'pending');
+  const endToEndId = tx?.id ? String(tx.id) : null;
   return {
     payoutId: String(payout?.id ?? payoutId),
     status: mapPayoutStatus(rawStatus),
@@ -403,6 +445,7 @@ export async function refundMercadoPagoPayment(input: {
   const refund = await mpFetch(`/v1/payments/${encodeURIComponent(paymentId)}/refunds`, {
     method: 'POST',
     headers: {
+      // Mesma chave = retry seguro se a rede cair no meio do cancelamento.
       'X-Idempotency-Key': `refund-${paymentId}-${body.amount ?? 'full'}`,
     },
     body: JSON.stringify(body),

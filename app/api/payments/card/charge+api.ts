@@ -10,7 +10,16 @@ import {
   loadShopMarketplaceRecipients,
   mpMarketplacePaymentFields,
   publicSettlementMeta,
+  withCashFeeDebtRecovery,
 } from '@/services/marketplaceSplit';
+import { loadPlatformState } from '@/services/platformStore';
+import { merchantCashFeeDebt } from '@/services/orderLedgerServer';
+import {
+  isMerchantPlan,
+  parsePlanApplicationId,
+  registerPlanPayment,
+  confirmPlanPaymentFromMp,
+} from '@/services/planSubscriptionServer';
 
 type Body = {
   mpCustomerId?: string;
@@ -31,6 +40,9 @@ type Body = {
   kind?: 'credit' | 'debit';
   isGhostTest?: boolean;
   last4?: string;
+  applicationId?: string;
+  plan?: string;
+  token?: string;
 };
 
 const TEST_CARDS_BY_LAST4: Record<
@@ -196,6 +208,11 @@ async function createTokenFromSavedCard(
 
 export async function POST(request: Request) {
   try {
+    const { requirePaymentSession } = await import('@/services/paymentAuth');
+    const rawBody = (await request.json().catch(() => ({}))) as Body;
+    const gate = await requirePaymentSession(request, rawBody as { token?: string });
+    if (!gate.ok) return gate.response;
+
     if (!isMercadoPagoConfigured()) {
       return Response.json(
         {
@@ -207,20 +224,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json()) as Body;
+    const body = rawBody;
     const mpCustomerId = String(body.mpCustomerId || '').trim();
     const mpCardId = String(body.mpCardId || '').trim();
     const securityCode = String(body.securityCode || '').replace(/\D/g, '');
     let paymentMethodId = String(body.paymentMethodId || '').trim();
     const subtotal = Number(body.subtotal ?? 0);
     const last4 = String(body.last4 || '').replace(/\D/g, '').slice(-4);
-    const testKey = TEST_CARDS_BY_LAST4[last4]
-      ? last4
-      : body.isGhostTest || mpCardId.startsWith('test_')
-        ? last4 && TEST_CARDS_BY_LAST4[last4]
-          ? last4
-          : '6351'
-        : '';
+    const allowTestCards = process.env.MP_MODE === 'sandbox' && process.env.NODE_ENV !== 'production';
+    const testKey =
+      allowTestCards && TEST_CARDS_BY_LAST4[last4] ? last4 : '';
 
     if (!testKey && (!mpCustomerId || !mpCardId || mpCardId.startsWith('test_'))) {
       return Response.json(
@@ -263,14 +276,104 @@ export async function POST(request: Request) {
         ? Math.max(rawAmount, 0.01)
         : Math.max(rawAmount, 1);
 
-    const recipients = await loadShopMarketplaceRecipients(String(body.businessId), {});
-    const settlement = buildOrderSettlement(split, recipients);
-    const settlementPublic = publicSettlementMeta(settlement);
-    const mpExtra = mpMarketplacePaymentFields(settlement);
-    const sellerToken =
-      settlement.usedSellerToken && recipients.merchantSellerAccessToken
-        ? recipients.merchantSellerAccessToken
-        : undefined;
+    const subscriptionApplicationId = isSubscription
+      ? String(body.applicationId || '').trim() ||
+        parsePlanApplicationId(body.orderDraftId) ||
+        ''
+      : '';
+    const subscriptionPlan = isSubscription && isMerchantPlan(body.plan) ? body.plan : null;
+
+    if (isSubscription && (!subscriptionApplicationId || !subscriptionPlan)) {
+      return Response.json(
+        {
+          ok: false,
+          code: 'INVALID',
+          message: 'Assinatura incompleta (applicationId/plano). Refaça o pagamento.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Assinatura: sem marketplace. Pedido: gateway/split atual.
+    let settlementPublic: ReturnType<typeof publicSettlementMeta> | {
+      mode: string;
+      merchantPaidViaMp: boolean;
+      driverViaLedger: boolean;
+      applicationFee: number;
+    };
+    let mpExtra: { application_fee?: number } = {};
+    let sellerToken: string | undefined;
+
+    if (isSubscription) {
+      settlementPublic = {
+        mode: 'platform_direct',
+        merchantPaidViaMp: false,
+        driverViaLedger: false,
+        applicationFee: 0,
+      };
+    } else {
+      const recipients = await loadShopMarketplaceRecipients(String(body.businessId), {});
+      let debt = 0;
+      try {
+        const plat = await loadPlatformState();
+        debt = merchantCashFeeDebt(plat, String(body.businessId));
+      } catch {
+        debt = 0;
+      }
+      const settlement = withCashFeeDebtRecovery(
+        buildOrderSettlement(split, recipients),
+        split,
+        debt
+      );
+      settlementPublic = publicSettlementMeta(settlement);
+      mpExtra = mpMarketplacePaymentFields(settlement);
+      sellerToken =
+        settlement.usedSellerToken && recipients.merchantSellerAccessToken
+          ? recipients.merchantSellerAccessToken
+          : undefined;
+    }
+
+    const ownerUserId = gate.user.id;
+
+    async function persistSubscriptionIfPaid(opts: {
+      mpPaymentId: string;
+      status: string;
+      paidAt?: string;
+    }) {
+      if (!isSubscription || !subscriptionApplicationId || !subscriptionPlan) return;
+      if (opts.status !== 'paid') {
+        try {
+          await registerPlanPayment({
+            mpPaymentId: opts.mpPaymentId,
+            applicationId: subscriptionApplicationId,
+            plan: subscriptionPlan,
+            amount: chargeAmount,
+            method: 'card',
+            externalReference: String(body.orderDraftId),
+            ownerUserId,
+            businessName: body.businessName,
+            status: 'pending',
+          });
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      try {
+        await confirmPlanPaymentFromMp({
+          mpPaymentId: opts.mpPaymentId,
+          applicationId: subscriptionApplicationId,
+          plan: subscriptionPlan,
+          amount: chargeAmount,
+          method: 'card',
+          externalReference: body.orderDraftId,
+          businessName: body.businessName,
+          paidAt: opts.paidAt,
+        });
+      } catch (e: any) {
+        console.error('[payments/card/charge] confirmPlanPayment', e?.message || e);
+      }
+    }
 
     // ——— Cartão de TESTE ———
     if (testKey) {
@@ -283,30 +386,32 @@ export async function POST(request: Request) {
 
       paymentMethodId = TEST_CARDS_BY_LAST4[testKey]?.payment_method_id || 'master';
 
-      // Credencial APP_USR (produção) não reconhece BIN de teste → bin_not_found.
-      // Em modo teste do app: aprova localmente com CVV 123 (sem chamar token MP).
-      // Também na assinatura: cartão fantasma só valida o fluxo (sem debitar MP).
-      if (isPixTestMode() || isSubscription) {
+      // Só aprova localmente em modo teste explícito — assinatura real vai pro MP.
+      if (isPixTestMode()) {
         console.warn(
           '[payments/card/charge] Cartão de teste: aprovando localmente (last4=' +
             testKey +
-            ', subscription=' +
-            isSubscription +
             ', amount=' +
             chargeAmount +
             ')'
         );
-        return Response.json(
-          approvedTestCharge({
-            chargeAmount,
-            split: { ...split, customerTotal: chargeAmount, platformAmount: chargeAmount },
-            orderDraftId: body.orderDraftId!,
-            businessId: body.businessId!,
-            businessName: body.businessName!,
-            last4: testKey,
-            paymentMethodId,
-          })
-        );
+        const local = approvedTestCharge({
+          chargeAmount,
+          split: { ...split, customerTotal: chargeAmount, platformAmount: chargeAmount },
+          orderDraftId: body.orderDraftId!,
+          businessId: body.businessId!,
+          businessName: body.businessName!,
+          last4: testKey,
+          paymentMethodId,
+        });
+        if (isSubscription) {
+          await persistSubscriptionIfPaid({
+            mpPaymentId: local.charge.id,
+            status: 'paid',
+            paidAt: local.charge.paidAt,
+          });
+        }
+        return Response.json(local);
       }
 
       // Sem modo teste: tenta cobrança real no MP (exige credenciais TEST- ou cartão real)
@@ -324,14 +429,16 @@ export async function POST(request: Request) {
 
         const payment = await mpFetch('/v1/payments', {
           method: 'POST',
-          accessToken: sellerToken,
+          accessToken: isSubscription ? undefined : sellerToken,
           headers: {
             'X-Idempotency-Key': `card-test-${body.orderDraftId}-${Date.now()}`,
           },
           body: JSON.stringify({
             transaction_amount: Number(chargeAmount.toFixed(2)),
             token: tokenId,
-            description: `Peça Já · ${body.businessName}`.slice(0, 230),
+            description: isSubscription
+              ? `Peça Já · Assinatura ${body.businessName}`.slice(0, 230)
+              : `Peça Já · ${body.businessName}`.slice(0, 230),
             installments: 1,
             capture: true,
             binary_mode: true,
@@ -341,20 +448,39 @@ export async function POST(request: Request) {
               identification: TEST_HOLDER.identification,
             },
             external_reference: body.orderDraftId,
-            ...mpExtra,
-            metadata: {
-              order_draft_id: body.orderDraftId,
-              source: 'peca-ja-card-test',
-              last4: testKey,
-              settlement_mode: settlement.mode,
-              merchant_paid_via_mp: settlement.merchantPaidViaMp,
-              driver_via_ledger: settlement.driverViaLedger,
-            },
+            ...(isSubscription ? {} : mpExtra),
+            metadata: isSubscription
+              ? {
+                  order_draft_id: body.orderDraftId,
+                  business_id: body.businessId,
+                  business_name: body.businessName,
+                  application_id: subscriptionApplicationId,
+                  plan: subscriptionPlan,
+                  purpose: 'subscription',
+                  source: 'peca-ja-card-test',
+                  last4: testKey,
+                  settlement_mode: 'platform_direct',
+                }
+              : {
+                  order_draft_id: body.orderDraftId,
+                  source: 'peca-ja-card-test',
+                  last4: testKey,
+                  settlement_mode: (settlementPublic as any).mode,
+                  settlement_application_fee: (settlementPublic as any).applicationFee,
+                  cash_fee_debt_recovery: (settlementPublic as any).cashFeeDebtRecovery ?? 0,
+                  merchant_paid_via_mp: (settlementPublic as any).merchantPaidViaMp,
+                  driver_via_ledger: (settlementPublic as any).driverViaLedger,
+                },
           }),
         });
 
         const status = mapMpStatusToPix(payment.status);
         if (status === 'paid') {
+          await persistSubscriptionIfPaid({
+            mpPaymentId: String(payment.id),
+            status: 'paid',
+            paidAt: payment.date_approved || new Date().toISOString(),
+          });
           return Response.json({
             ok: true,
             charge: {
@@ -371,6 +497,7 @@ export async function POST(request: Request) {
               orderDraftId: body.orderDraftId,
               businessId: body.businessId,
               businessName: body.businessName,
+              purpose: isSubscription ? 'subscription' : 'order',
             },
           });
         }
@@ -425,14 +552,16 @@ export async function POST(request: Request) {
 
     const payment = await mpFetch('/v1/payments', {
       method: 'POST',
-      accessToken: sellerToken,
+      accessToken: isSubscription ? undefined : sellerToken,
       headers: {
         'X-Idempotency-Key': `card-${body.orderDraftId}-${Date.now()}`,
       },
       body: JSON.stringify({
         transaction_amount: Number(chargeAmount.toFixed(2)),
         token: tokenId,
-        description: `Peça Já · ${body.businessName}`.slice(0, 230),
+        description: isSubscription
+          ? `Peça Já · Assinatura ${body.businessName}`.slice(0, 230)
+          : `Peça Já · ${body.businessName}`.slice(0, 230),
         installments: 1,
         capture: true,
         binary_mode: true,
@@ -443,17 +572,30 @@ export async function POST(request: Request) {
           email,
         },
         external_reference: body.orderDraftId,
-        ...mpExtra,
-        metadata: {
-          order_draft_id: body.orderDraftId,
-          business_id: body.businessId,
-          source: 'peca-ja-card',
-          last4,
-          settlement_mode: settlement.mode,
-          settlement_application_fee: settlement.applicationFee,
-          merchant_paid_via_mp: settlement.merchantPaidViaMp,
-          driver_via_ledger: settlement.driverViaLedger,
-        },
+        ...(isSubscription ? {} : mpExtra),
+        metadata: isSubscription
+          ? {
+              order_draft_id: body.orderDraftId,
+              business_id: body.businessId,
+              business_name: body.businessName,
+              application_id: subscriptionApplicationId,
+              plan: subscriptionPlan,
+              purpose: 'subscription',
+              source: 'peca-ja-card',
+              last4,
+              settlement_mode: 'platform_direct',
+            }
+          : {
+              order_draft_id: body.orderDraftId,
+              business_id: body.businessId,
+              source: 'peca-ja-card',
+              last4,
+              settlement_mode: (settlementPublic as any).mode,
+              settlement_application_fee: (settlementPublic as any).applicationFee,
+              cash_fee_debt_recovery: (settlementPublic as any).cashFeeDebtRecovery ?? 0,
+              merchant_paid_via_mp: (settlementPublic as any).merchantPaidViaMp,
+              driver_via_ledger: (settlementPublic as any).driverViaLedger,
+            },
       }),
     });
 
@@ -470,6 +612,15 @@ export async function POST(request: Request) {
         { status: 402 }
       );
     }
+
+    await persistSubscriptionIfPaid({
+      mpPaymentId: String(payment.id),
+      status,
+      paidAt:
+        status === 'paid'
+          ? payment.date_approved || new Date().toISOString()
+          : undefined,
+    });
 
     return Response.json({
       ok: true,
@@ -490,6 +641,7 @@ export async function POST(request: Request) {
         orderDraftId: body.orderDraftId,
         businessId: body.businessId,
         businessName: body.businessName,
+        purpose: isSubscription ? 'subscription' : 'order',
       },
     });
   } catch (err: any) {

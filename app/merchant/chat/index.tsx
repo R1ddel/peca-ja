@@ -14,8 +14,7 @@ import { BackHeader } from '@/components/BackHeader';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
 import { useOrders } from '@/context/OrdersContext';
-import { resolveMerchantApplication } from '@/utils/partners';
-import { getShopByApplicationId } from '@/utils/merchantShop';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import { listMerchantThreads, MerchantThread } from '@/services/orderChat';
 import { theme } from '@/constants/theme';
 import { merchantOrderLabel } from '@/utils/merchantOrderNumber';
@@ -51,14 +50,13 @@ export default function MerchantChatInboxScreen() {
   const orderById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
 
   const load = useCallback(async () => {
-    const app = await resolveMerchantApplication(user?.email);
-    if (!app) {
+    const { shop } = await resolveOperatorMerchantContext(user?.email);
+    const bid = shop?.businessId ?? null;
+    if (!bid) {
       setBusinessId(null);
       setThreads([]);
       return;
     }
-    const shop = await getShopByApplicationId(app.id);
-    const bid = shop?.businessId ?? null;
     setBusinessId(bid);
     const shopOrders = bid ? orders.filter((o) => o.businessId === bid) : [];
     setThreads(await listMerchantThreads(shopOrders, { includeHistory: true }));

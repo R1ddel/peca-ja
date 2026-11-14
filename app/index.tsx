@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { BrandIntro } from '@/components/BrandIntro';
 import { useAuth } from '@/context/AuthContext';
@@ -11,6 +11,12 @@ export default function IndexScreen() {
 
   const finishIntro = useCallback(() => {
     setIntroDone(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.title = 'Peça Já';
+    }
   }, []);
 
   React.useEffect(() => {

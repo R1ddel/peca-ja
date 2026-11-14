@@ -10,9 +10,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { useOrders } from '@/context/OrdersContext';
 import { useCart } from '@/context/CartContext';
 import { OrderStatusTracker } from '@/components/OrderStatusTracker';
+import { CustomerLiveMap } from '@/components/CustomerLiveMap';
+import { isCustomerLiveMapOrder } from '@/utils/customerLiveMap';
 import { MobileShell } from '@/components/MobileShell';
 import { OrderAlertBanner } from '@/components/OrderAlertBanner';
 import { theme } from '@/constants/theme';
@@ -24,6 +28,8 @@ import { getBusinessLogoSource } from '@/utils/businessLogos';
 
 export default function OrdersScreen() {
   useRequireAuth();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
   const { myOrders, activeOrders } = useOrders();
   const { replaceCart, items: cartItems } = useCart();
 
@@ -59,7 +65,7 @@ export default function OrdersScreen() {
     return (
       <MobileShell style={styles.emptyShell}>
         <Tabs.Screen options={{ headerShown: false }} />
-        <View style={styles.tabHeader}>
+        <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
           <Text style={styles.tabTitle}>Pedidos</Text>
           <Text style={styles.tabSub}>Acompanhe tudo em um só lugar</Text>
         </View>
@@ -82,7 +88,7 @@ export default function OrdersScreen() {
   return (
     <MobileShell style={styles.container}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <View style={styles.tabHeader}>
+      <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
         <Text style={styles.tabTitle}>Pedidos</Text>
         <Text style={styles.tabSub}>
           {activeOrders.length > 0
@@ -96,8 +102,8 @@ export default function OrdersScreen() {
           <>
             <Text style={styles.sectionTitle}>Em andamento</Text>
             {activeOrders.map((order) => (
+              <View key={order.id}>
               <TouchableOpacity
-                key={order.id}
                 style={[styles.orderCard, styles.activeCard]}
                 onPress={() => router.push(`/order/${order.id}`)}
                 activeOpacity={0.85}
@@ -127,6 +133,10 @@ export default function OrdersScreen() {
                   </View>
                 </View>
               </TouchableOpacity>
+              {isCustomerLiveMapOrder(order) ? (
+                <CustomerLiveMap order={order} viewer="customer" height={200} />
+              ) : null}
+              </View>
             ))}
           </>
         )}
@@ -193,7 +203,6 @@ const styles = StyleSheet.create({
   content: { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl },
   tabHeader: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.sm,
   },
   tabTitle: {

@@ -1,0 +1,42 @@
+{
+  "_comentario": "Modelo em branco. Preencher antes de assinar. Gere: python scripts/generate_contrato_socio_investidor_pdf.py 40",
+  "contratante": {
+    "nome_completo": "________________________________",
+    "cpf": "____________________",
+    "rg": "____________________",
+    "nacionalidade": "brasileiro(a)",
+    "estado_civil": "____________________",
+    "profissao": "____________________",
+    "endereco": "________________________________________________",
+    "cidade_uf": "____________________",
+    "banco": "",
+    "marca": "InovaTech",
+    "nome_comercial": "Inova Tech Desenvolvimento Digital",
+    "email": "____________________",
+    "telefone": "____________________",
+    "pix": "____________________"
+  },
+  "investidor": {
+    "nome": "________________________________",
+    "nacionalidade": "brasileiro(a)",
+    "estado_civil": "____________________",
+    "profissao": "____________________",
+    "cpf": "____________________",
+    "rg": "____________________",
+    "endereco": "________________________________________________",
+    "cidade_uf": "____________________",
+    "email": "____________________",
+    "telefone": "____________________",
+    "chave_pix_recebimento": "____________________"
+  },
+  "operacao": {
+    "nome": "Peça Já",
+    "descricao": "marketplace digital de delivery e conveniência operado exclusivamente pelo Contratante",
+    "site": "https://pecaja.app",
+    "ciclo_meses": "2"
+  },
+  "prazo_meses": 12,
+  "foro": "Comarca de ____________________",
+  "data_assinatura": "____/____/________",
+  "local_assinatura": "____________________"
+}

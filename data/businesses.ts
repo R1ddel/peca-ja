@@ -2,9 +2,23 @@ import { Business, MenuItem } from '@/types';
 import { BusinessCategory } from '@/constants/theme';
 import { getAddonGroupsForCategory } from '@/data/addons';
 import { TOP_MERCHANT_PLAN } from '@/constants/plans';
+import { customerUnitPrice } from '@/constants/pricing';
 import { MUCUGE_SHOPS, MucugeProduct, MucugeShop } from '@/data/mucugeMerchants';
 import { getActiveCatalogCityName, getShopsForActiveCity } from '@/data/cityCatalog';
-import { getDemoLocationIdSync, getDemoTokenCity, getSimulatedCityLabel } from '@/utils/demoLocation';
+import { sameOperatingCity } from '@/utils/operatingCity';
+import { resolveBusinessCoords } from '@/utils/orderGeo';
+import {
+  getActiveDemoLocation,
+  getDemoLocationIdSync,
+  getDemoTokenCity,
+  getSimulatedCityLabel,
+} from '@/utils/demoLocation';
+import {
+  MENU_ITEM_PHOTO_POOLS,
+  productGalleryFromName,
+  productImageFromName,
+  resolveMenuItemPhotoKey,
+} from '@/utils/menuItemPhotoSuggest';
 
 type ProductTemplate = {
   name: string;
@@ -148,106 +162,17 @@ const STORE_PHOTOS: Record<BusinessCategory, { logo: string[]; cover: string[] }
   },
 };
 
-/** IDs Unsplash por tipo de produto (nome/categoria). */
-const PRODUCT_PHOTOS: Record<string, string[]> = {
-  default: ['photo-1546069901-ba9599a7e63c', 'photo-1504674900247-0877df9cc836', 'photo-1567620905732-2d1ec7ab7445'],
-  prato: ['photo-1546069901-ba9599a7e63c', 'photo-1608039829572-7854f8c4ebd4', 'photo-1467003909585-2f8a72700288', 'photo-1432139509613-5c4255815697'],
-  pizza: ['photo-1513104890138-7c749659a591', 'photo-1574071318508-1cdbab80d002', 'photo-1628840042765-356cda07504e', 'photo-1565299624946-b28f40a0ae38'],
-  burger: ['photo-1568901347635-c0230a490990', 'photo-1550547660-d9450f859349', 'photo-1571091718767-18b5b1457add', 'photo-1594212699903-ec8a3eca50f5'],
-  massa: ['photo-1621996346565-e3dbc646d9a9', 'photo-1551892374-ecf8754cf8b0', 'photo-1598866594230-a7c12756260f'],
-  salada: ['photo-1512621776951-a57141f2eefd', 'photo-1540420773420-3366772f4999', 'photo-1546793665-c74683f339c1'],
-  sobremesa: ['photo-1578985545062-69928b1d9587', 'photo-1587314168485-3236d6710814', 'photo-1606313564200-e75d5e30476c', 'photo-1488477181946-6428a0291777'],
-  acai: ['photo-1590301157890-4810ed352733', 'photo-1488477181946-6428a0291777'],
-  batata: ['photo-1573080496219-bb080dd4f877', 'photo-1630384060421-cb28817995c1'],
-  entrada: ['photo-1601050690597-df0568f70950', 'photo-1626700051175-6818013e1d4f'],
-  suco: ['photo-1622597467836-f3285f2131b8', 'photo-1600271886742-f049cd451bba', 'photo-1523677011781-c91d1bbe7241'],
-  refrigerante: ['photo-1622483767028-3ff66e4bb782', 'photo-1629203851122-3726ecdf080e'],
-  agua: ['photo-1548839140-29a7492991a9', 'photo-1560026301-8833a940b848'],
-  milkshake: ['photo-1572490122747-3964b21cbd69', 'photo-1579954115545-a9551373057c'],
-  cafe: ['photo-1495474472287-4d89b1ccc336', 'photo-1509042239860-f550ce710b93', 'photo-1511920170033-f8396924c348'],
-  cerveja: ['photo-1608270586620-248524c67de9', 'photo-1535958636474-b021ee887b13', 'photo-1618885472179-5e474019f2c3'],
-  vinho: ['photo-1510812431401-41d2bd2722f3', 'photo-1506377247377-2a5b3b417ebb', 'photo-1474722883778-79220a8abce9'],
-  energetico: ['photo-1558618666-fcd25c85cd64', 'photo-1622543921706-6c7f01b8e0e4'],
-  whisky: ['photo-1527281400683-1aae777175f8', 'photo-1569529463441-c963b3b55005'],
-  drink: ['photo-1514362545857-3bc16c4c7d1b', 'photo-1556679343-c7306c1976bc'],
-  pao: ['photo-1509440159596-0249088772ff', 'photo-1549931319-a545dcf3bc73', 'photo-1555507036-ab1f4038808a'],
-  doce: ['photo-1578985545062-69928b1d9587', 'photo-1486427944299-d1955d23e34d', 'photo-1606313564200-e75d5e30476c'],
-  salgado: ['photo-1601050690597-df0568f70950', 'photo-1626700051175-6818013e1d4f'],
-  arroz: ['photo-1586201375761-83865001e31c', 'photo-1536304993881-ff6e9eefa2a6'],
-  feijao: ['photo-1596797038530-2c107229654b', 'photo-1586201375761-83865001e31c'],
-  leite: ['photo-1563636619-914303474212', 'photo-1550583724-b2692b85b150'],
-  queijo: ['photo-1486297678162-eb2a19b0a32d', 'photo-1452195100486-9cc805987862'],
-  fruta: ['photo-1571771894821-ce9b6c11d08e', 'photo-1610832958506-aa56368176cf', 'photo-1560806887-1e4cd0b6cbd6'],
-  hortifruti: ['photo-1540420773420-3366772f4999', 'photo-1597362920021-2cb3a50a1c2f', 'photo-1518977956812-cd3d692e4473'],
-  carne: ['photo-1603048297172-c92544767ff4', 'photo-1529692236671-f1f6cf9683ba'],
-  limpeza: ['photo-1583947215250-de1766684f62', 'photo-1563453392212-326f5e854473'],
-  higiene: ['photo-1556228578-0d85b1a4d571', 'photo-1584308666744-24d5c474f2ae'],
-  medicamento: ['photo-1584308666744-24d5c474f2ae', 'photo-1471864190281-a93a3070b6de', 'photo-1587854692152-cf660b4c48ea'],
-  vitamina: ['photo-1550572017-edd951aa8b8a', 'photo-1505751172876-fa5741dbc594'],
-  protetor: ['photo-1556228720-195a672e8a03', 'photo-1571781926291-c477ebfd024b'],
-  equipamento: ['photo-1584515933487-7798240a0708', 'photo-1631549916768-4119b2e5f926'],
-  snack: ['photo-1621939514644-15479cfa5bd7', 'photo-1599490659213-e2b925b5b95c'],
-  chocolate: ['photo-1549007994-cb92aaebd54b', 'photo-1606313564200-e75d5e30476c'],
-  utilidade: ['photo-1609091839311-d5365f9ff1c5', 'photo-1558618666-fcd25c85cd64'],
-  kit: ['photo-1607083206869-4c797edcb84c', 'photo-1607082349566-187342175e2f'],
-  smoothie: ['photo-1505252585461-04db1eb6788a', 'photo-1638176066601-c62db8d3355f'],
-  cha: ['photo-1556679343-c7306c1976bc', 'photo-1576092768241-dec231879fc3'],
-};
-
-function pick(ids: string[], index: number, w: number, h: number) {
-  return u(ids[index % ids.length], w, h);
-}
-
-function productPhotoKey(name: string, menuCategory: string): keyof typeof PRODUCT_PHOTOS {
-  const text = `${name} ${menuCategory}`.toLowerCase();
-
-  if (text.includes('pizza')) return 'pizza';
-  if (text.includes('burger') || text.includes('hambur')) return 'burger';
-  if (text.includes('açaí') || text.includes('acai')) return 'acai';
-  if (text.includes('milkshake')) return 'milkshake';
-  if (text.includes('batata') || text.includes('onion')) return 'batata';
-  if (text.includes('salada')) return 'salada';
-  if (text.includes('massa') || text.includes('espaguete') || text.includes('nhoque') || text.includes('lasanha') || text.includes('yakissoba')) return 'massa';
-  if (text.includes('pudim') || text.includes('brownie') || text.includes('mousse') || text.includes('bolo') || text.includes('torta') || text.includes('sonho') || text.includes('doce') || text.includes('cookie') || text.includes('churros') || text.includes('brigadeiro')) return 'sobremesa';
-  if (text.includes('pastel') || text.includes('coxinha') || text.includes('bruschetta') || text.includes('entrada') || text.includes('empada') || text.includes('esfiha') || text.includes('salgado') || text.includes('quiche')) return 'entrada';
-  if (text.includes('suco') || text.includes('detox') || text.includes('laranja')) return 'suco';
-  if (text.includes('refrigerante') || text.includes('coca')) return 'refrigerante';
-  if (text.includes('água') || text.includes('agua') || text.includes('coco')) return 'agua';
-  if (text.includes('cerveja') || text.includes('chop')) return 'cerveja';
-  if (text.includes('vinho') || text.includes('espumante')) return 'vinho';
-  if (text.includes('energético') || text.includes('energetico')) return 'energetico';
-  if (text.includes('whisky') || text.includes('vodka') || text.includes('gin') || text.includes('destil')) return 'whisky';
-  if (text.includes('drink') || text.includes('mojito') || text.includes('tônica')) return 'drink';
-  if (text.includes('café') || text.includes('cafe') || text.includes('cappuccino') || text.includes('latte') || text.includes('brew')) return 'cafe';
-  if (text.includes('chá') || text.includes('cha') || text.includes('kombucha')) return 'cha';
-  if (text.includes('smoothie') || text.includes('shot')) return 'smoothie';
-  if (text.includes('pão') || text.includes('pao') || text.includes('croissant') || text.includes('baguete') || text.includes('focaccia') || text.includes('broa') || text.includes('rosca') || text.includes('bisnaga')) return 'pao';
-  if (text.includes('arroz')) return 'arroz';
-  if (text.includes('feijão') || text.includes('feijao')) return 'feijao';
-  if (text.includes('leite') || text.includes('iogurte') || text.includes('manteiga') || text.includes('iogurte')) return 'leite';
-  if (text.includes('queijo')) return 'queijo';
-  if (text.includes('banana') || text.includes('maçã') || text.includes('maca') || text.includes('fruta')) return 'fruta';
-  if (text.includes('tomate') || text.includes('alface') || text.includes('cebola') || text.includes('hortifruti') || text.includes('legume')) return 'hortifruti';
-  if (text.includes('carne') || text.includes('frango') || text.includes('linguiça') || text.includes('bife') || text.includes('filé') || text.includes('galeto') || text.includes('churrasco')) return 'carne';
-  if (text.includes('detergente') || text.includes('sabão') || text.includes('desinfet') || text.includes('esponja') || text.includes('limpeza')) return 'limpeza';
-  if (text.includes('shampoo') || text.includes('sabonete') || text.includes('papel') || text.includes('creme dental') || text.includes('escova') || text.includes('álcool') || text.includes('mascara') || text.includes('máscara') || text.includes('algodão')) return 'higiene';
-  if (text.includes('dipirona') || text.includes('paracetamol') || text.includes('ibuprofeno') || text.includes('omeprazol') || text.includes('loratadina') || text.includes('xarope') || text.includes('colírio') || text.includes('pastilha') || text.includes('medicamento') || text.includes('soro') || text.includes('curativo') || text.includes('gaze')) return 'medicamento';
-  if (text.includes('vitamina') || text.includes('ômega') || text.includes('omega') || text.includes('complexo')) return 'vitamina';
-  if (text.includes('protetor') || text.includes('hidratante') || text.includes('sérum') || text.includes('serum') || text.includes('derm')) return 'protetor';
-  if (text.includes('termômetro') || text.includes('termometro') || text.includes('inalador') || text.includes('pressão') || text.includes('equipamento')) return 'equipamento';
-  if (text.includes('salgadinho') || text.includes('snack') || text.includes('biscoito') || text.includes('bala')) return 'snack';
-  if (text.includes('chocolate')) return 'chocolate';
-  if (text.includes('pilha') || text.includes('carregador') || text.includes('fone') || text.includes('isqueiro') || text.includes('garrafa') || text.includes('guarda-chuva') || text.includes('utilidade')) return 'utilidade';
-  if (text.includes('kit') || text.includes('combo') || text.includes('caixa')) return 'kit';
-  if (text.includes('pf') || text.includes('feijoada') || text.includes('strogonoff') || text.includes('parmegiana') || text.includes('risoto') || text.includes('sopa') || text.includes('prato')) return 'prato';
-  if (text.includes('sanduíche') || text.includes('sanduiche') || text.includes('misto') || text.includes('wrap') || text.includes('lanche')) return 'entrada';
-
-  return 'default';
-}
-
 function productImage(name: string, menuCategory: string, index: number) {
-  const key = productPhotoKey(name, menuCategory);
-  return pick(PRODUCT_PHOTOS[key], index, 400, 400);
+  return productImageFromName(name, menuCategory, index);
+}
+
+/** Foto larga do carrossel da home — o prato ocupa o card, não um recorte quadrado. */
+function bannerFoodImage(item: MenuItem, shopId: string): string {
+  const key = resolveMenuItemPhotoKey(item.name, item.category);
+  const pool = MENU_ITEM_PHOTO_POOLS[key] ?? MENU_ITEM_PHOTO_POOLS.default;
+  let hash = 0;
+  for (let i = 0; i < shopId.length; i++) hash = (hash + shopId.charCodeAt(i) * (i + 3)) % 997;
+  return u(pool[hash % pool.length], 1400, 800);
 }
 
 /** 3–4 fotos do mesmo tema para a galeria ao tocar no prato. */
@@ -257,22 +182,7 @@ function productGallery(
   index: number,
   mainImage: string
 ): string[] {
-  const key = productPhotoKey(name, menuCategory);
-  const pool = PRODUCT_PHOTOS[key];
-  const urls: string[] = [mainImage];
-
-  for (let i = 0; i < pool.length && urls.length < 4; i++) {
-    const next = pick(pool, index + i + 1, 800, 600);
-    if (!urls.includes(next)) urls.push(next);
-  }
-
-  const fallback = PRODUCT_PHOTOS.default;
-  for (let i = 0; urls.length < 3 && i < fallback.length; i++) {
-    const next = pick(fallback, index + i + 5, 800, 600);
-    if (!urls.includes(next)) urls.push(next);
-  }
-
-  return urls;
+  return productGalleryFromName(name, menuCategory, index, mainImage);
 }
 
 function buildItemDetails(name: string, description: string, category: string): string {
@@ -298,7 +208,8 @@ function buildItemDetails(name: string, description: string, category: string): 
 function storeImage(category: BusinessCategory, index: number, kind: 'logo' | 'cover') {
   const pool = STORE_PHOTOS[category][kind];
   const size = kind === 'cover' ? ([800, 400] as const) : ([400, 300] as const);
-  return pick(pool, index, size[0], size[1]);
+  const id = pool[Math.abs(index) % pool.length];
+  return u(id, size[0], size[1]);
 }
 
 const PRODUCT_CATALOGS: Record<BusinessCategory, ProductTemplate[]> = {
@@ -618,9 +529,13 @@ function buildBusinessesFromShops(
       shop.category === 'conveniencia' ||
       shop.category === 'mercado';
 
+    const operatingCity = getActiveCatalogCityName();
+    // Pin estável na cidade (frete/OSRM). Parceiros reais sobrescrevem via MerchantShop.
+    const pin = resolveBusinessCoords(id, shop.name);
     return {
       id,
       name: shop.name,
+      city: operatingCity && operatingCity !== 'sua cidade' ? operatingCity : undefined,
       description: shop.description,
       category: shop.category,
       image: shop.image || storeImage(shop.category, index, 'logo'),
@@ -632,6 +547,9 @@ function buildBusinessesFromShops(
       deliveryFee,
       minOrder: 0,
       distance: `${distanceKm} km`,
+      distanceKm: Number(distanceKm),
+      latitude: pin.latitude,
+      longitude: pin.longitude,
       hours:
         shop.category === 'farmacia'
           ? '07:00–23:00'
@@ -662,7 +580,7 @@ let seedBusinessesCache: Business[] = [];
 export function getSeedBusinesses(): Business[] {
   const token = getDemoTokenCity();
   const city = getActiveCatalogCityName() || '';
-  const key = `${token}::${city}`;
+  const key = `${token}::${city}::op`;
   if (key === seedBusinessesCacheKey && seedBusinessesCache.length > 0) {
     return seedBusinessesCache;
   }
@@ -774,7 +692,105 @@ export type PromoBannerItem = {
   category?: BusinessCategory;
   /** Query sugerida na busca. */
   searchQuery?: string;
+  /** Restaurante da oferta. Toque abre a loja. */
+  businessId?: string;
+  /** Prato da oferta. Toque abre esse item. */
+  itemId?: string;
 };
+
+function offerPrice(item: MenuItem): number {
+  const merchant =
+    item.promo != null && item.promo > 0 && item.promo < item.price ? item.promo : item.price;
+  return customerUnitPrice(merchant);
+}
+
+function cheapest(items: MenuItem[]): MenuItem {
+  return items.reduce((best, cur) => (offerPrice(cur) < offerPrice(best) ? cur : best));
+}
+
+const HERO_CATEGORIES = new Set(['Pratos', 'Burgers', 'Pizzas', 'Massas', 'Combos', 'Entradas']);
+
+/** Um prato principal da casa, variando entre os restaurantes. */
+function heroDish(items: MenuItem[], shopId: string): MenuItem {
+  const mains = items.filter((item) => HERO_CATEGORIES.has(item.category));
+  const popular = (mains.length ? mains : items).filter((item) => item.popular);
+  const pool = popular.length ? popular : mains.length ? mains : items;
+  const sorted = [...pool].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  let hash = 0;
+  for (let i = 0; i < shopId.length; i++) hash += shopId.charCodeAt(i);
+  return sorted[hash % sorted.length];
+}
+
+/**
+ * Painel da home: uma publicidade por restaurante cadastrado.
+ * Quem tem combo entra com "Combos a partir de…". Os outros entram com o prato em oferta.
+ */
+export function getRestaurantPromoBanners(source?: Business[]): PromoBannerItem[] {
+  const all = source ?? getAllBusinesses();
+  const restaurants = all.filter((b) => b.category === 'restaurante' && b.menu?.length);
+  const open = restaurants.filter((b) => b.isOpen);
+  const pool = open.length >= 4 ? open : restaurants;
+
+  const ads = pool
+    .map((shop) => {
+      const menu = shop.menu.filter((item) => item.available !== false);
+      const ownCombos = menu.filter(
+        (item) => isComboItem(item) && item.name.trim().toLowerCase() !== 'combo família'
+      );
+      const promos = menu.filter(
+        (item) =>
+          !isComboItem(item) &&
+          item.promo != null &&
+          item.promo > 0 &&
+          item.promo < item.price &&
+          item.category !== 'Bebidas'
+      );
+      const popular = menu.filter((item) => item.popular && item.category !== 'Bebidas');
+      const dishes = menu.filter((item) => item.category !== 'Bebidas');
+      const familyCombo = menu.find((item) => item.name.trim().toLowerCase() === 'combo família');
+
+      let item: MenuItem | undefined;
+      let title = '';
+      let rank = 0;
+      if (ownCombos.length) {
+        item = cheapest(ownCombos);
+        title = `Combos a partir de ${formatPrice(offerPrice(item))}`;
+        rank = 30;
+      } else if (promos.length || popular.length || dishes.length) {
+        const pool = (promos.length ? promos : popular.length ? popular : dishes).filter(
+          (entry) => entry.name.trim().toLowerCase() !== 'combo família'
+        );
+        item = heroDish(pool.length ? pool : dishes, shop.id);
+        const priced = formatPrice(offerPrice(item));
+        const onPromo = item.promo != null && item.promo > 0 && item.promo < item.price;
+        title = onPromo ? `${item.name} por ${priced}` : `${item.name} a partir de ${priced}`;
+        rank = onPromo ? 20 : 10;
+      } else if (familyCombo) {
+        item = familyCombo;
+        title = `Combos a partir de ${formatPrice(offerPrice(item))}`;
+        rank = 5;
+      }
+      if (!item) return null;
+      if (shop.plan === TOP_MERCHANT_PLAN) rank += 2;
+      if (shop.isOpen) rank += 1;
+      const banner: PromoBannerItem = {
+        id: `ad-${shop.id}`,
+        title,
+        subtitle: shop.name,
+        color: '#111827',
+        image: bannerFoodImage(item, shop.id),
+        businessId: shop.id,
+        itemId: item.id,
+      };
+      return { banner, rank, rating: shop.rating };
+    })
+    .filter((row): row is { banner: PromoBannerItem; rank: number; rating: number } => !!row)
+    .sort((a, b) => b.rank - a.rank || b.rating - a.rating)
+    .slice(0, 8)
+    .map((row) => row.banner);
+
+  return ads;
+}
 
 export const banners: PromoBannerItem[] = [
   {
@@ -913,8 +929,10 @@ const CAPAO_BANNERS: PromoBannerItem[] = [
   },
 ];
 
-/** Banners da home conforme a cidade simulada (dev) ou cidade do GPS. */
+/** Banners da home: ofertas dos restaurantes. Nichos só se a cidade não tiver restaurante. */
 export function getPromoBanners(gpsCity?: string | null): PromoBannerItem[] {
+  const ads = getRestaurantPromoBanners();
+  if (ads.length) return ads;
   const id = getDemoLocationIdSync();
   if (id === 'vale-do-capao') return CAPAO_BANNERS;
   if (id === 'mucuge') return banners;
@@ -970,12 +988,17 @@ export function getPartnerBusinesses(): Business[] {
   return partnerBusinessesCache;
 }
 
-/** Catálogo completo: seeds (só demo __DEV__) + lojas de parceiros ativos. */
-export function getAllBusinesses(): Business[] {
+/** Catálogo do cliente: só lojas da cidade em que ele está. */
+export function getAllBusinesses(viewerCity?: string | null): Business[] {
+  const city = (viewerCity || getActiveDemoLocation()?.city || '').trim();
   const byId = new Map<string, Business>();
-  for (const b of getSeedBusinesses()) byId.set(b.id, b);
-  // Sempre inclui parceiros reais (produção e demo)
-  for (const b of partnerBusinessesCache) byId.set(b.id, b);
+  if (!city || city.toLowerCase() === 'sua cidade') return [];
+  for (const b of getSeedBusinesses()) {
+    if (sameOperatingCity(b.city, city)) byId.set(b.id, b);
+  }
+  for (const b of partnerBusinessesCache) {
+    if (sameOperatingCity(b.city, city)) byId.set(b.id, b);
+  }
   return Array.from(byId.values());
 }
 

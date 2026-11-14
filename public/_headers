@@ -1,0 +1,6 @@
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(self)
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: blob: https:; media-src 'self' blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://*.expo.dev; frame-src 'self' https://maps.google.com https://www.google.com https://google.com https://*.google.com; connect-src 'self' https://api-production-8092.up.railway.app https://api.peca-ja.expo.app https://*.expo.dev https://api.mercadopago.com https://api.resend.com https://*.googleapis.com https://*.gstatic.com wss: https:; worker-src 'self' blob:

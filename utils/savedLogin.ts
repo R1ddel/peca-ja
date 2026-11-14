@@ -21,8 +21,12 @@ export async function getSavedLogin(scope: SavedLoginScope): Promise<SavedLogin 
     const raw = await AsyncStorage.getItem(KEY[scope]);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<SavedLogin>;
-    if (!parsed?.email || typeof parsed.password !== 'string') return null;
-    return { email: String(parsed.email), password: String(parsed.password) };
+    const email = String(parsed?.email || '').trim().toLowerCase();
+    if (!email) return null;
+    if (parsed?.password) {
+      await AsyncStorage.setItem(KEY[scope], JSON.stringify({ email, password: '' }));
+    }
+    return { email, password: '' };
   } catch {
     return null;
   }
@@ -31,11 +35,11 @@ export async function getSavedLogin(scope: SavedLoginScope): Promise<SavedLogin 
 export async function saveLogin(
   scope: SavedLoginScope,
   email: string,
-  password: string
+  _password?: string
 ): Promise<void> {
   const payload: SavedLogin = {
     email: email.trim().toLowerCase(),
-    password,
+    password: '',
   };
   await AsyncStorage.setItem(KEY[scope], JSON.stringify(payload));
 }

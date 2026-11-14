@@ -15,7 +15,7 @@ import { Button } from '@/components/Button';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import { getShopByApplicationId } from '@/utils/merchantShop';
 import {
   MerchantPromoType,
@@ -51,10 +51,10 @@ export default function MerchantPromoFormScreen() {
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const app = await resolveMerchantApplication(user?.email);
+        const { app, shop: foundShop } = await resolveOperatorMerchantContext(user?.email);
         if (!app) return;
         setApplicationId(app.id);
-        const shop = await getShopByApplicationId(app.id);
+        const shop = foundShop ?? (await getShopByApplicationId(app.id));
         if (!shop) return;
         setBusinessId(shop.businessId);
 

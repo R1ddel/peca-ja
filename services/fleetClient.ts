@@ -9,6 +9,7 @@ import {
   getFleetDriverToken,
   setFleetDriverToken,
 } from '@/utils/fleetDriverToken';
+import { getDriverSession } from '@/utils/driverSession';
 import { getPlatformToken } from '@/services/platformSession';
 
 export { mergeOrdersPreferNewer } from '@/utils/orderMerge';
@@ -96,11 +97,23 @@ export async function fleetPushAndPull(
     return Date.now() - t < 14 * 86_400_000;
   });
   const token = await getPlatformToken();
+  const session = await getDriverSession();
+  const fleetId = session?.applicationId ? `da_${session.applicationId}` : '';
+  const driverToken = fleetId ? await getFleetDriverToken(fleetId) : null;
+  if (!token && !driverToken) {
+    return {
+      ok: false,
+      code: 'AUTH',
+      message: 'Sync da frota só com sessão ou token de entregador.',
+    };
+  }
   return postFleet({
     action: 'sync',
     orders: slim,
     runDispatch: opts?.runDispatch !== false,
     ...(token ? { token } : {}),
+    ...(fleetId ? { fleetId } : {}),
+    ...(driverToken ? { driverToken } : {}),
   });
 }
 
@@ -113,12 +126,43 @@ export async function fleetHeartbeat(input: {
   latitude?: number;
   longitude?: number;
   heading?: number;
+  city?: string;
 }): Promise<FleetSyncPayload | null> {
-  const res = await postFleet({ action: 'heartbeat', ...input });
-  if (res?.ok && res.driverToken) {
-    await setFleetDriverToken(input.fleetId, res.driverToken);
+  let driverToken = await getFleetDriverToken(input.fleetId);
+  if (!driverToken) {
+    const token = await getPlatformToken();
+    if (!token) {
+      return {
+        ok: false,
+        code: 'AUTH',
+        message: 'Heartbeat exige login do entregador.',
+      };
+    }
+    const auth = await postFleet({
+      action: 'driver_auth',
+      fleetId: input.fleetId,
+      applicationId: input.applicationId,
+      name: input.name,
+      phone: input.phone,
+      city: input.city,
+      token,
+    });
+    if (!auth?.ok || !auth.driverToken) {
+      return auth || { ok: false, code: 'AUTH', message: 'Não foi possível autenticar o entregador.' };
+    }
+    driverToken = auth.driverToken;
+    await setFleetDriverToken(input.fleetId, driverToken);
   }
-  return res;
+  return postFleet({
+    action: 'heartbeat',
+    fleetId: input.fleetId,
+    applicationId: input.applicationId,
+    online: input.online,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    heading: input.heading,
+    driverToken,
+  });
 }
 
 export async function fleetClaimRemote(input: {
@@ -153,19 +197,37 @@ export async function fleetReleaseRemote(input: {
 export async function fleetReportRemote(
   report: ConductReport
 ): Promise<FleetSyncPayload | null> {
-  return postFleet({ action: 'report', report });
+  const token = await getPlatformToken();
+  const session = await getDriverSession();
+  const fleetId = session?.applicationId ? `da_${session.applicationId}` : '';
+  const driverToken = fleetId ? await getFleetDriverToken(fleetId) : null;
+  return postFleet({
+    action: 'report',
+    report,
+    ...(fleetId ? { fleetId } : {}),
+    ...(token ? { token } : {}),
+    ...(driverToken ? { driverToken } : {}),
+  });
 }
 
 export async function fleetDriverLocationRemote(
   fleetId: string
 ): Promise<FleetSyncPayload | null> {
-  return postFleet({ action: 'location', fleetId });
+  const token = await getPlatformToken();
+  const driverToken = await getFleetDriverToken(fleetId);
+  return postFleet({
+    action: 'location',
+    fleetId,
+    ...(token ? { token } : {}),
+    ...(driverToken ? { driverToken } : {}),
+  });
 }
 
 export async function fleetAdminRemote(input: {
   pin?: string;
   token?: string;
   adminAction: 'list' | 'block' | 'unblock' | 'set_report_status';
+  hqMode?: 'real' | 'projection';
   fleetId?: string;
   reason?: string;
   reportId?: string;

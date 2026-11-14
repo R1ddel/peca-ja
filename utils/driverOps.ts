@@ -36,20 +36,10 @@ export function isAssignedToDriver(order: Order, fleetId: string): boolean {
   return !!order.driverId && order.driverId === fleetId;
 }
 
-/** Pedido livre para aceitar (sem motoboy real). */
+/** Pedido livre para a fila do motoboy: cozinha já marcou pronto e ninguém aceitou. */
 export function isJobAvailable(order: Order): boolean {
-  if (order.status === 'cancelado' || order.status === 'entregue' || order.status === 'pendente') {
-    return false;
-  }
-  if (!order.paymentConfirmed && order.status === 'pendente') return false;
-  // Precisa estar em preparo / pronto ou já confirmado aguardando
-  if (
-    order.status !== 'confirmado' &&
-    order.status !== 'preparando' &&
-    order.status !== 'saiu_entrega'
-  ) {
-    return false;
-  }
+  if (order.deliveryBy === 'store') return false;
+  if (!isKitchenReadyForPickup(order)) return false;
   if (!order.driverId || isMockFleetDriverId(order.driverId)) return true;
   return false;
 }
@@ -64,14 +54,11 @@ export function isKitchenReadyForPickup(order: Order): boolean {
 }
 
 export function listAvailableJobs(orders: Order[]): Order[] {
-  return orders
-    .filter(isJobAvailable)
-    .sort((a, b) => {
-      const ar = isKitchenReadyForPickup(a) ? 0 : 1;
-      const br = isKitchenReadyForPickup(b) ? 0 : 1;
-      if (ar !== br) return ar - br;
-      return +new Date(a.createdAt) - +new Date(b.createdAt);
-    });
+  return orders.filter(isJobAvailable).sort((a, b) => {
+    return (
+      +new Date(a.kitchenReadyAt || a.createdAt) - +new Date(b.kitchenReadyAt || b.createdAt)
+    );
+  });
 }
 
 export function listDriverActive(orders: Order[], fleetId: string): Order[] {

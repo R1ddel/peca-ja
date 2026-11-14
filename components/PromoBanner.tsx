@@ -13,7 +13,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { theme, BusinessCategory } from '@/constants/theme';
-import { getPromoBanners, PromoBannerItem } from '@/data/businesses';
+import { getPromoBanners, getRestaurantPromoBanners, PromoBannerItem } from '@/data/businesses';
+import { Business } from '@/types';
 import { useDemoLocation } from '@/hooks/useDemoLocation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -23,17 +24,23 @@ const GAP = theme.spacing.sm;
 const INTERVAL_MS = 3500;
 
 type PromoBannerProps = {
-  /** Se informado, aplica categoria na Home em vez de navegar. */
+  /** Catálogo já filtrado da home. Sem isso, usa os restaurantes da cidade. */
+  businesses?: Business[];
+  /** Se informado, aplica categoria na Home em vez de navegar. Só nos banners antigos de nicho. */
   onSelectCategory?: (category: BusinessCategory) => void;
 };
 
-export function PromoBanner({ onSelectCategory }: PromoBannerProps) {
+export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) {
   const scrollRef = useRef<ScrollView>(null);
   const indexRef = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const pausedRef = useRef(false);
   const { version } = useDemoLocation();
-  const banners = useMemo(() => getPromoBanners(), [version]);
+  const banners = useMemo(() => {
+    const ads = getRestaurantPromoBanners(businesses);
+    if (ads.length) return ads;
+    return getPromoBanners();
+  }, [businesses, version]);
 
   useEffect(() => {
     indexRef.current = 0;
@@ -68,6 +75,17 @@ export function PromoBanner({ onSelectCategory }: PromoBannerProps) {
   }
 
   function handlePress(banner: PromoBannerItem) {
+    if (banner.businessId) {
+      router.push({
+        pathname: '/business/[id]',
+        params: {
+          id: banner.businessId,
+          ...(banner.itemId ? { itemId: banner.itemId } : {}),
+          from: 'home',
+        },
+      } as any);
+      return;
+    }
     if (banner.category && onSelectCategory) {
       onSelectCategory(banner.category);
       return;
@@ -112,10 +130,21 @@ export function PromoBanner({ onSelectCategory }: PromoBannerProps) {
             accessibilityRole="button"
             accessibilityLabel={`${banner.title}. ${banner.subtitle}`}
           >
-            <Image source={{ uri: banner.image }} style={styles.image} />
-            <LinearGradient colors={['transparent', banner.color + 'DD']} style={styles.gradient}>
-              <Text style={styles.title}>{banner.title}</Text>
-              <Text style={styles.subtitle}>{banner.subtitle}</Text>
+            <Image source={{ uri: banner.image }} style={styles.image} resizeMode="cover" />
+            <LinearGradient
+              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']}
+              locations={[0, 0.42, 1]}
+              style={styles.gradient}
+            >
+              <View style={styles.offerPill}>
+                <Text style={styles.offerPillText}>Oferta</Text>
+              </View>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {banner.subtitle}
+              </Text>
+              <Text style={styles.title} numberOfLines={2}>
+                {banner.title}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
         ))}
@@ -142,9 +171,10 @@ const styles = StyleSheet.create({
   },
   bannerWrapper: {
     width: BANNER_WIDTH,
-    height: 150,
+    height: 210,
     borderRadius: theme.radius.lg,
     overflow: 'hidden',
+    backgroundColor: '#111827',
   },
   image: {
     width: '100%',
@@ -155,15 +185,31 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: theme.spacing.md,
   },
+  offerPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FACC15',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginBottom: 6,
+  },
+  offerPillText: {
+    color: '#111827',
+    fontSize: 11,
+    fontWeight: theme.fontWeight.extrabold,
+    letterSpacing: 0.3,
+  },
   title: {
-    fontSize: theme.fontSize.xl,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.white,
   },
   subtitle: {
     fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.bold,
     color: 'rgba(255,255,255,0.92)',
-    marginTop: 2,
+    marginBottom: 2,
   },
   dots: {
     flexDirection: 'row',

@@ -1,5 +1,7 @@
 import { BusinessCategory, OrderStatus } from '@/constants/theme';
 import { MerchantPlan } from '@/constants/plans';
+import type { ShopPaymentMethod } from '@/utils/paymentMethods';
+import type { ShopDeliveryMode } from '@/utils/shopDelivery';
 
 export interface User {
   id: string;
@@ -13,7 +15,21 @@ export interface User {
   /** Biografia pública do cliente. */
   bio?: string | null;
   /** Papel HQ Peça Já (painel /admin). null/undefined = cliente. */
-  platformRole?: 'ceo' | 'ops' | null;
+  platformRole?:
+    | 'ceo'
+    | 'ops'
+    | 'admin'
+    | 'finance'
+    | 'support'
+    | 'commercial'
+    | 'marketing'
+    | 'operations'
+    | 'auditor'
+    | null;
+  /** Conta bloqueada pelo Command Center. */
+  blocked?: boolean;
+  blockedReason?: string | null;
+  blockedAt?: string | null;
   createdAt: string;
 }
 
@@ -86,6 +102,10 @@ export interface Business {
   sellsDrinks?: boolean;
   /** Pacote de assinatura do comércio no Peça Já. */
   plan: MerchantPlan;
+  /** Métodos que esta loja aceita. Ausente = Pix e cartão. */
+  acceptedPayments?: ShopPaymentMethod[];
+  /** store = entregador da loja. app = motoboy da Peça Já. Ausente = app. */
+  deliveryBy?: ShopDeliveryMode;
   /**
    * Access Token OAuth do Mercado Pago do comerciante (conta conectada ao marketplace).
    * Usado no Split Pix para creditar a fatia do comércio.
@@ -155,11 +175,25 @@ export interface Order {
   businessLatitude?: number;
   businessLongitude?: number;
   paymentMethod: string;
+  /** Quem leva este pedido. Gravado no checkout. */
+  deliveryBy?: ShopDeliveryMode;
+  /** Cidade de atuação da loja. Ex.: "Mucugê — BA". */
+  city?: string;
   createdAt: string;
   updatedAt: string;
   estimatedDelivery: string;
-  /** Taxa Peça Já (retida do comércio, não cobrada a mais do cliente). */
+  /** Taxa Peça Já (cobrada a mais do cliente, não descontada do preço da loja). */
   platformFee?: number;
+  /**
+   * Pedido em dinheiro da própria loja: este valor saiu do caixa Pix
+   * e ficou com o Peça Já. A loja ficou com a cédula.
+   */
+  cashFeePixAmount?: number;
+  /**
+   * No Pix/cartão seguinte: quanto da dívida de taxa (dinheiro) foi abatido
+   * da parte da loja (via application_fee ou líquido do crédito).
+   */
+  cashFeeDebtRecovered?: number;
   establishmentAmount?: number;
   driverAmount?: number;
   /** ID da cobrança Pix (Mercado Pago ou mock). */
@@ -176,6 +210,24 @@ export interface Order {
   settlementApplicationFee?: number;
   /** true só depois do gateway confirmar o pagamento. */
   paymentConfirmed?: boolean;
+  /**
+   * Crédito da parte da loja no ledger da nuvem, depois da entrega.
+   * pending = a nuvem recusou ou não estava logada.
+   */
+  merchantLedgerCredit?: 'credited' | 'pending' | 'skipped';
+  /**
+   * Repasse do gateway depois dos dois códigos.
+   * A taxa Peça Já não sai. Loja e frete vão para as chaves Pix.
+   */
+  gatewaySplit?: {
+    at: string;
+    merchantStatus: 'paid' | 'pending' | 'failed' | 'skipped' | 'missing_key';
+    driverStatus: 'paid' | 'pending' | 'failed' | 'skipped' | 'missing_key';
+    merchantAmount?: number;
+    driverAmount?: number;
+    simulated?: boolean;
+    message?: string;
+  };
   /** Entregador atribuído (`null` = liberado / sem motoboy). */
   driverId?: string | null;
   /** userId da plataforma do entregador (ledger / auth do frete). */
@@ -230,6 +282,15 @@ export interface Order {
   cancelledBy?: 'customer' | 'merchant' | 'system';
   /** Quando foi cancelado. */
   cancelledAt?: string;
+  /**
+   * Estorno após cancelar pedido pago online.
+   * not_applicable = sem cobrança online / dinheiro na entrega.
+   * skipped = mock/local. processing/confirmed/failed = gateway.
+   */
+  refundStatus?: 'not_applicable' | 'skipped' | 'processing' | 'confirmed' | 'failed';
+  refundId?: string;
+  refundMessage?: string;
+  refundAt?: string;
 }
 
 /** Avaliação de um pedido entregue no comércio. */

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useRootNavigationState } from 'expo-router';
@@ -22,13 +23,15 @@ import { PaymentScreen } from '@/components/PaymentScreen';
 import { CardCvvModal } from '@/components/CardCvvModal';
 import { theme } from '@/constants/theme';
 import {
-  PLATFORM_FEE,
   countOrderItemUnits,
   customerSubtotalFromMerchant,
   resolveDeliveryFee,
   resolvePlatformFee,
 } from '@/constants/pricing';
 import { formatPrice, getBusinessById } from '@/data/businesses';
+import { getUserPlaceDetails, openSystemSettings } from '@/services/permissions';
+import { getActiveDemoLocation, getSimulatedCityLabel } from '@/utils/demoLocation';
+import { sameOperatingCity } from '@/utils/operatingCity';
 import { formatAddonsLabel, getCustomerLineTotal } from '@/utils/cartLine';
 import {
   ActiveBenefits,
@@ -40,11 +43,10 @@ import {
   CreatePixChargeInput,
   PixCharge,
   calculateFreeRouteDistance,
-  merchantCoordsNearCustomer,
   resolveDeliveryPriceFromDistance,
   gpsFreightAdjustMessage,
 } from '@/services/payment';
-import { parseDistanceKm } from '@/components/HomeFilters';
+import { resolveMerchantPinForBusinessId } from '@/utils/merchantPin';
 import {
   SavedCard,
   brandLabel,
@@ -61,6 +63,7 @@ import {
   upsertAddress,
 } from '@/utils/addresses';
 import { applyCoupon, applyMerchantAutoPromo, CouponDef, normalizeCouponCode } from '@/utils/coupons';
+import { couponUseKey, loadUsedCouponKeys, markCouponUsed } from '@/utils/couponUses';
 import {
   MerchantPromo,
   listPromosByBusiness,
@@ -69,21 +72,8 @@ import {
 } from '@/utils/merchantPromos';
 import { getClosedBannerText } from '@/utils/businessHours';
 import { loginHref } from '@/utils/authReturnTo';
-
-const paymentMethods = [
-  {
-    id: 'pix',
-    label: 'Pix',
-    hint: 'QR Code · confirmação automática do banco',
-    icon: 'qr-code' as const,
-  },
-  {
-    id: 'card',
-    label: 'Cartão',
-    hint: 'Crédito/débito salvo · confirmação do banco',
-    icon: 'card' as const,
-  },
-];
+import { offersForCheckout } from '@/utils/paymentMethods';
+import { useMerchantShopRevision } from '@/hooks/useMerchantShopRevision';
 
 export default function CheckoutScreen() {
   const rootNavigationState = useRootNavigationState();
@@ -106,6 +96,8 @@ export default function CheckoutScreen() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [gpsDeliveryFee, setGpsDeliveryFee] = useState<number | null>(null);
   const [gpsLoading, setGpsLoading] = useState(true);
+  const [gpsReady, setGpsReady] = useState(false);
+  const [gpsCanAsk, setGpsCanAsk] = useState(true);
   const [gpsAdjustNote, setGpsAdjustNote] = useState<string | null>(null);
   const [checkoutGps, setCheckoutGps] = useState<{
     deliveryLatitude: number;
@@ -113,14 +105,32 @@ export default function CheckoutScreen() {
     businessLatitude: number;
     businessLongitude: number;
   } | null>(null);
+  const checkoutGpsRef = useRef(checkoutGps);
+  checkoutGpsRef.current = checkoutGps;
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<CouponDef | null>(null);
   const [couponError, setCouponError] = useState('');
+  const [usedCouponKeys, setUsedCouponKeys] = useState<string[]>([]);
   const [merchantPromos, setMerchantPromos] = useState<MerchantPromo[]>([]);
   /** Evita redirect para /cart quando o carrinho é limpo após pagamento. */
   const completingOrderRef = useRef(false);
 
-  const business = businessId ? getBusinessById(businessId) : null;
+  const shopRevision = useMerchantShopRevision();
+  const business = useMemo(
+    () => (businessId ? getBusinessById(businessId) : null),
+    [businessId, shopRevision]
+  );
+  const paymentMethods = useMemo(
+    () => offersForCheckout(business?.acceptedPayments, business?.deliveryBy),
+    [business?.acceptedPayments, business?.deliveryBy]
+  );
+
+  useEffect(() => {
+    if (!paymentMethods.length) return;
+    if (!paymentMethods.some((method) => method.id === paymentMethod)) {
+      setPaymentMethod(paymentMethods[0].id);
+    }
+  }, [paymentMethods, paymentMethod]);
   const baseDeliveryFee =
     gpsDeliveryFee != null
       ? gpsDeliveryFee
@@ -182,6 +192,13 @@ export default function CheckoutScreen() {
     };
 
     if (appliedCoupon) {
+      const usedKey = couponUseKey({
+        merchantPromoId: appliedCoupon.merchantPromoId,
+        code: appliedCoupon.code,
+      });
+      if (usedKey && usedCouponKeys.includes(usedKey)) {
+        return { ...pricedBase, ...emptyExtra };
+      }
       return applyResult(
         applyCoupon({
           code: appliedCoupon.code,
@@ -195,7 +212,12 @@ export default function CheckoutScreen() {
       );
     }
 
-    const auto = pickAutoPromo(merchantPromos, subtotal);
+    const auto = pickAutoPromo(
+      merchantPromos.filter(
+        (promo) => !usedCouponKeys.includes(couponUseKey({ merchantPromoId: promo.id, code: promo.code }))
+      ),
+      subtotal
+    );
     if (auto) {
       return applyResult(
         applyMerchantAutoPromo({
@@ -210,7 +232,19 @@ export default function CheckoutScreen() {
     }
 
     return { ...pricedBase, ...emptyExtra };
-  }, [appliedCoupon, pricedBase, subtotal, merchantPromos, platformFee]);
+  }, [appliedCoupon, pricedBase, subtotal, merchantPromos, platformFee, usedCouponKeys]);
+
+  useEffect(() => {
+    if (!appliedCoupon) return;
+    const useKey = couponUseKey({
+      merchantPromoId: appliedCoupon.merchantPromoId,
+      code: appliedCoupon.code,
+    });
+    if (useKey && usedCouponKeys.includes(useKey)) {
+      setAppliedCoupon(null);
+      setCouponError('Este cupom já foi usado.');
+    }
+  }, [appliedCoupon, usedCouponKeys]);
 
   useEffect(() => {
     if (!businessId) {
@@ -249,7 +283,12 @@ export default function CheckoutScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshCards();
-    }, [refreshCards])
+      if (!user?.id) {
+        setUsedCouponKeys([]);
+        return;
+      }
+      void loadUsedCouponKeys(user.id).then(setUsedCouponKeys);
+    }, [refreshCards, user?.id])
   );
 
   useEffect(() => {
@@ -284,76 +323,107 @@ export default function CheckoutScreen() {
     loadActiveBenefits().then(setBenefits).catch(() => setBenefits({}));
   }, [items.length, subtotal]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const captureDeliveryGps = useCallback(async (): Promise<boolean> => {
+    setGpsLoading(true);
+    setGpsAdjustNote(null);
+    try {
+      let latitude: number | null = null;
+      let longitude: number | null = null;
 
-    async function loadGpsFreight() {
-      setGpsLoading(true);
-      setGpsAdjustNote(null);
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          if (!cancelled) {
-            Alert.alert(
-              'Permissão negada',
-              'Sem GPS usamos o frete urbano fixo de R$ 5,00 (entregas dentro da cidade).'
-            );
-            setGpsDeliveryFee(5);
-            setGpsLoading(false);
-          }
-          return;
-        }
-
-        const currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const { latitude, longitude } = currentLocation.coords;
-
-        const approxKm = business ? parseDistanceKm(business.distance) : 1.5;
-        const merchant = merchantCoordsNearCustomer(latitude, longitude, approxKm || 1.5);
-
-        if (!cancelled) {
-          setCheckoutGps({
-            deliveryLatitude: latitude,
-            deliveryLongitude: longitude,
-            businessLatitude: merchant.latitude,
-            businessLongitude: merchant.longitude,
-          });
-        }
-
-        const distanceInMeters = await calculateFreeRouteDistance(
-          merchant.latitude,
-          merchant.longitude,
-          latitude,
-          longitude
-        );
-
-        const result = resolveDeliveryPriceFromDistance(distanceInMeters);
-        if (!cancelled) {
-          setGpsDeliveryFee(result.fee);
-          if (result.usedGpsPricing) {
-            // Banner no checkout; o alerta já aparece no carrinho ao calcular.
-            setGpsAdjustNote(gpsFreightAdjustMessage(result));
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          Alert.alert(
-            'GPS indisponível',
-            'Não foi possível medir a rota. Usamos o frete urbano fixo de R$ 5,00.'
-          );
-          setGpsDeliveryFee(5);
-        }
-      } finally {
-        if (!cancelled) setGpsLoading(false);
+      // Cidade demo (Mucugê no link público): não espera o GPS do aparelho para liberar o Pix.
+      const demo = getActiveDemoLocation();
+      if (demo) {
+        latitude = demo.latitude;
+        longitude = demo.longitude;
       }
-    }
 
-    loadGpsFreight();
-    return () => {
-      cancelled = true;
-    };
-  }, [businessId, business?.distance]);
+      let perm = demo
+        ? { granted: false as const, canAskAgain: true }
+        : await Location.getForegroundPermissionsAsync();
+      if (!demo && !perm.granted) {
+        perm = await Location.requestForegroundPermissionsAsync();
+      }
+
+      if (!demo && perm.granted) {
+        if (Platform.OS === 'android') {
+          const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
+          if (!servicesOn) {
+            await Location.enableNetworkProviderAsync().catch(() => {});
+          }
+        }
+        try {
+          const currentLocation = await Promise.race([
+            Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('gps-timeout')), 12000)
+            ),
+          ]);
+          latitude = currentLocation.coords.latitude;
+          longitude = currentLocation.coords.longitude;
+        } catch {
+          /* cai no fallback abaixo */
+        }
+      } else {
+        setGpsCanAsk(perm.canAskAgain !== false);
+      }
+
+      // Demo Mucugê / cidade simulada: libera o checkout na apresentação sem GPS do aparelho
+      if (latitude == null || longitude == null) {
+        const place = await getUserPlaceDetails();
+        if (place) {
+          latitude = place.latitude;
+          longitude = place.longitude;
+        }
+      }
+
+      if (latitude == null || longitude == null) {
+        setGpsReady(false);
+        setCheckoutGps(null);
+        checkoutGpsRef.current = null;
+        setGpsDeliveryFee(5);
+        return false;
+      }
+
+      const merchant = await resolveMerchantPinForBusinessId(business?.id || '');
+      const nextGps = {
+        deliveryLatitude: latitude,
+        deliveryLongitude: longitude,
+        businessLatitude: merchant.latitude,
+        businessLongitude: merchant.longitude,
+      };
+      checkoutGpsRef.current = nextGps;
+      setCheckoutGps(nextGps);
+      setGpsReady(true);
+      setGpsCanAsk(true);
+
+      const distanceInMeters = await calculateFreeRouteDistance(
+        merchant.latitude,
+        merchant.longitude,
+        latitude,
+        longitude
+      );
+      const result = resolveDeliveryPriceFromDistance(distanceInMeters);
+      setGpsDeliveryFee(result.fee);
+      if (result.usedGpsPricing) {
+        setGpsAdjustNote(gpsFreightAdjustMessage(result));
+      }
+      return true;
+    } catch {
+      setGpsReady(false);
+      setCheckoutGps(null);
+      checkoutGpsRef.current = null;
+      setGpsDeliveryFee(5);
+      return false;
+    } finally {
+      setGpsLoading(false);
+    }
+  }, [business]);
+
+  useEffect(() => {
+    void captureDeliveryGps();
+  }, [captureDeliveryGps]);
 
   useEffect(() => {
     if (!navigationReady) return;
@@ -372,12 +442,12 @@ export default function CheckoutScreen() {
   }, [navigationReady, user, items.length, businessId]);
 
   function paymentLabelForOrder(): string {
-    if (paymentMethod === 'pix') return 'Pix';
-    if (selectedCard) {
+    const selected = paymentMethods.find((method) => method.id === paymentMethod);
+    if (selected?.kind === 'card' && selectedCard) {
       const kind = selectedCard.kind === 'credit' ? 'Crédito' : 'Débito';
       return `Cartão ${kind} ${brandLabel(selectedCard.brand)} •••• ${selectedCard.last4}`;
     }
-    return 'Cartão';
+    return selected?.label ?? 'Pix';
   }
 
   async function finalizeOrder(opts?: {
@@ -385,9 +455,28 @@ export default function CheckoutScreen() {
     charge?: PixCharge;
   }) {
     if (!user || !businessId || items.length === 0) return;
+    const place = await getUserPlaceDetails().catch(() => null);
+    const customerCity = getSimulatedCityLabel(place?.city);
+    if (business?.city && !sameOperatingCity(business.city, customerCity)) {
+      Alert.alert(
+        'Cidade da loja',
+        `${business.name} só atende em ${business.city}.`
+      );
+      return;
+    }
 
-    // iFood-style: nunca cria pedido "confirmado" sem pagamento
-    if (!opts?.paymentConfirmed) {
+    const selectedOffer = paymentMethods.find((method) => method.id === paymentMethod);
+    const storeDelivers = business?.deliveryBy === 'store';
+    const payOnDelivery = selectedOffer?.kind === 'offline' && storeDelivers;
+    if (selectedOffer?.kind === 'offline' && !storeDelivers) {
+      Alert.alert(
+        'Pagamento',
+        'Com motoboy do Peça Já o pedido só fecha no Pix ou no cartão.'
+      );
+      return;
+    }
+    // Online: nunca cria pedido confirmado sem pagamento. Na entrega, a loja cobra ao receber.
+    if (!opts?.paymentConfirmed && !payOnDelivery) {
       Alert.alert(
         'Aguardando pagamento',
         'O pedido só é confirmado depois que o pagamento for aprovado.'
@@ -407,25 +496,28 @@ export default function CheckoutScreen() {
         subtotal,
         address: address.trim(),
         paymentMethod: paymentLabelForOrder(),
-        paymentConfirmed: true,
+        paymentConfirmed: payOnDelivery ? false : true,
         deliveryFee: priced.deliveryFee,
         discount:
           priced.discount + (priced.couponDiscount ?? 0) > 0
             ? priced.discount + (priced.couponDiscount ?? 0)
             : undefined,
-        platformFee: opts?.charge?.split?.platformAmount ?? PLATFORM_FEE,
+        platformFee: opts?.charge?.split?.platformAmount ?? platformFee,
         establishmentAmount: opts?.charge?.split?.merchantAmount,
         driverAmount: opts?.charge?.split?.driverAmount,
         paymentId: opts?.charge?.id,
-        paymentProvider: opts?.charge?.provider ?? (paymentMethod === 'card' ? 'card' : 'mock'),
+        paymentProvider:
+          opts?.charge?.provider ??
+          (payOnDelivery ? 'offline' : paymentMethod === 'card' ? 'card' : 'mock'),
         settlementMode: opts?.charge?.settlement?.mode,
         settlementMerchantPaidViaMp: opts?.charge?.settlement?.merchantPaidViaMp,
         settlementDriverViaLedger: opts?.charge?.settlement?.driverViaLedger,
         settlementApplicationFee: opts?.charge?.settlement?.applicationFee,
-        deliveryLatitude: checkoutGps?.deliveryLatitude,
-        deliveryLongitude: checkoutGps?.deliveryLongitude,
-        businessLatitude: checkoutGps?.businessLatitude,
-        businessLongitude: checkoutGps?.businessLongitude,
+        cashFeeDebtRecovered: opts?.charge?.settlement?.cashFeeDebtRecovery,
+        deliveryLatitude: checkoutGpsRef.current?.deliveryLatitude,
+        deliveryLongitude: checkoutGpsRef.current?.deliveryLongitude,
+        businessLatitude: checkoutGpsRef.current?.businessLatitude,
+        businessLongitude: checkoutGpsRef.current?.businessLongitude,
         customerName: user.name,
         customerPhone: user.phone,
         customerPhotoUrl: user.photoUrl,
@@ -437,8 +529,16 @@ export default function CheckoutScreen() {
         discount10: priced.discountApplied,
       });
 
-      if (priced.merchantPromoId) {
+      if (priced.merchantPromoId && user?.id) {
         await recordPromoRedemption(priced.merchantPromoId);
+        const useKey = couponUseKey({
+          merchantPromoId: priced.merchantPromoId,
+          code: appliedCoupon?.code,
+        });
+        await markCouponUsed(user.id, useKey);
+        if (useKey) {
+          setUsedCouponKeys((prev) => (prev.includes(useKey) ? prev : [...prev, useKey]));
+        }
       }
 
       setPixVisible(false);
@@ -588,7 +688,10 @@ export default function CheckoutScreen() {
   }
 
   async function handlePlaceOrder() {
-    if (freightPending) {
+    const payingWithPix =
+      (paymentMethods.find((method) => method.id === paymentMethod) ?? paymentMethods[0])?.kind ===
+      'pix';
+    if (freightPending && !payingWithPix) {
       Alert.alert('Aguarde', 'Estamos calculando a taxa de entrega pelo GPS.');
       return;
     }
@@ -609,7 +712,14 @@ export default function CheckoutScreen() {
     }
     if (!user || !businessId || items.length === 0 || !business) return;
 
-    if (paymentMethod === 'pix') {
+    const selected = paymentMethods.find((method) => method.id === paymentMethod) ?? paymentMethods[0];
+    if (!selected) {
+      Alert.alert('Pagamento', 'Esta loja não tem uma forma de pagamento disponível.');
+      return;
+    }
+
+    if (selected.kind === 'pix') {
+      if (!checkoutGpsRef.current) void captureDeliveryGps();
       setPixInput({
         orderDraftId: draftId,
         businessId,
@@ -630,6 +740,37 @@ export default function CheckoutScreen() {
         itemUnits,
       });
       setPixVisible(true);
+      return;
+    }
+
+    if (!checkoutGpsRef.current) {
+      await captureDeliveryGps();
+    }
+    if (!checkoutGpsRef.current) {
+      Alert.alert(
+        'GPS necessário',
+        'Não deu para ler sua localização. Ative o GPS e toque de novo em Pagar.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: gpsCanAsk ? 'Tentar de novo' : 'Abrir ajustes',
+            onPress: () => {
+              if (!gpsCanAsk) void openSystemSettings();
+              else void captureDeliveryGps();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    if (selected.kind === 'offline') {
+      setLoading(true);
+      try {
+        await finalizeOrder({ paymentConfirmed: false });
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -687,6 +828,15 @@ export default function CheckoutScreen() {
     if (!result.ok) {
       setAppliedCoupon(null);
       setCouponError(result.error);
+      return;
+    }
+    const useKey = couponUseKey({
+      merchantPromoId: result.coupon.merchantPromoId,
+      code: result.coupon.code,
+    });
+    if (useKey && usedCouponKeys.includes(useKey)) {
+      setAppliedCoupon(null);
+      setCouponError('Este cupom já foi usado.');
       return;
     }
     setAppliedCoupon(result.coupon);
@@ -783,6 +933,61 @@ export default function CheckoutScreen() {
                 })}
               </View>
             )}
+            <View style={[styles.gpsBanner, gpsReady ? styles.gpsBannerOn : styles.gpsBannerOff]}>
+              <Ionicons
+                name={gpsLoading ? 'locate' : gpsReady ? 'checkmark-circle' : 'warning'}
+                size={20}
+                color={gpsReady ? '#047857' : '#B45309'}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.gpsBannerTitle, gpsReady && styles.gpsBannerTitleOn]}>
+                  {gpsLoading
+                    ? 'Ligando o GPS…'
+                    : gpsReady
+                      ? 'GPS ligado'
+                      : 'Ative o GPS para a entrega'}
+                </Text>
+                <Text style={styles.gpsBannerText}>
+                  {gpsLoading
+                    ? 'Estamos lendo onde você está para o motoboy chegar no ponto certo.'
+                    : gpsReady
+                      ? 'O ponto do mapa é onde você está agora. Faça o pedido nesse lugar.'
+                      : 'Sem o GPS o motoboy não acha a porta. Toque uma vez para ligar.'}
+                </Text>
+              </View>
+            </View>
+            {!gpsReady && !gpsLoading ? (
+              <TouchableOpacity
+                style={styles.gpsBtn}
+                onPress={() => {
+                  void (async () => {
+                    if (!gpsCanAsk) {
+                      await openSystemSettings();
+                      return;
+                    }
+                    const ok = await captureDeliveryGps();
+                    if (!ok) {
+                      Alert.alert(
+                        'GPS',
+                        'Não foi possível ligar a localização. Permita o acesso do Peça Já e tente de novo.',
+                        [
+                          { text: 'Ok', style: 'cancel' },
+                          {
+                            text: 'Abrir ajustes',
+                            onPress: () => void openSystemSettings(),
+                          },
+                        ]
+                      );
+                    }
+                  })();
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.gpsBtnText}>
+                  {gpsCanAsk ? 'Ativar GPS' : 'Abrir ajustes do celular'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
             <Input
               placeholder="Rua, número, complemento, bairro"
               value={address}
@@ -847,7 +1052,7 @@ export default function CheckoutScreen() {
               </TouchableOpacity>
             ))}
 
-            {paymentMethod === 'card' && (
+            {paymentMethods.find((method) => method.id === paymentMethod)?.kind === 'card' && (
               <View style={styles.cardPicker}>
                 <View style={styles.cardPickerHeader}>
                   <Text style={styles.cardPickerTitle}>Cartão para cobrança</Text>
@@ -949,38 +1154,6 @@ export default function CheckoutScreen() {
               })}
               <View style={styles.divider} />
 
-              <Text style={styles.couponTitle}>Cupom</Text>
-              <View style={styles.couponRow}>
-                <View style={styles.couponInputWrap}>
-                  <Input
-                    placeholder="PECAJA10, BEMVINDO…"
-                    value={couponInput}
-                    onChangeText={setCouponInput}
-                    autoCapitalize="characters"
-                  />
-                </View>
-                {appliedCoupon ? (
-                  <Button title="Remover" variant="outline" onPress={clearCoupon} />
-                ) : (
-                  <Button title="Aplicar" onPress={handleApplyCoupon} />
-                )}
-              </View>
-              {!!couponError && <Text style={styles.couponError}>{couponError}</Text>}
-              {appliedCoupon && (
-                <Text style={styles.couponOk}>
-                  {appliedCoupon.label} aplicado
-                  {appliedCoupon.fundedBy === 'merchant' ? ' · custo da loja' : ''}
-                </Text>
-              )}
-              {!appliedCoupon && priced.couponLabel && priced.fromStoreAuto && (
-                <Text style={styles.couponOk}>
-                  {priced.couponLabel} (promo da loja) · custo da loja
-                </Text>
-              )}
-              <Text style={styles.couponHint}>
-                Cupons da loja ou Peça Já (PECAJA10 · BEMVINDO · FRETEGRATIS)
-              </Text>
-
               <SummaryRow label="Subtotal" value={formatPrice(customerSubtotal)} />
               {freightPending ? (
                 <View style={styles.gpsRow}>
@@ -1004,16 +1177,7 @@ export default function CheckoutScreen() {
                 />
               )}
               {(priced.couponDiscount ?? 0) > 0 && (
-                <SummaryRow
-                  label={priced.fromStoreAuto ? 'Promo da loja' : 'Cupom'}
-                  value={`−${formatPrice(priced.couponDiscount)}`}
-                />
-              )}
-              {(priced.merchantAbsorbsDelivery ?? 0) > 0 && (
-                <SummaryRow
-                  label="Frete (loja assume)"
-                  value={formatPrice(0)}
-                />
+                <SummaryRow label="Cupom" value={`−${formatPrice(priced.couponDiscount)}`} />
               )}
               {freightPending ? (
                 <SummaryRow label="Total a pagar" value="Aguardando frete…" bold />
@@ -1031,17 +1195,47 @@ export default function CheckoutScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
+          <Text style={styles.couponTitle}>Cupom da loja</Text>
+          <View style={styles.couponRow}>
+            <View style={styles.couponInputWrap}>
+              <Input
+                placeholder="Código do cupom"
+                value={couponInput}
+                onChangeText={setCouponInput}
+                autoCapitalize="characters"
+              />
+            </View>
+            {appliedCoupon ? (
+              <Button title="Remover" variant="outline" onPress={clearCoupon} />
+            ) : (
+              <Button title="Aplicar" onPress={handleApplyCoupon} />
+            )}
+          </View>
+          {!!couponError && <Text style={styles.couponError}>{couponError}</Text>}
+          {appliedCoupon && (
+            <Text style={styles.couponOk}>{appliedCoupon.label} aplicado</Text>
+          )}
+          {!appliedCoupon && priced.couponLabel && priced.fromStoreAuto && (
+            <Text style={styles.couponOk}>{priced.couponLabel} aplicado</Text>
+          )}
+          <Text style={styles.couponHint}>Cupom oferecido pela loja. Vale uma vez.</Text>
           <Button
             title={
               freightPending
                 ? 'Calculando frete…'
-                : paymentMethod === 'pix'
+                : paymentMethods.find((method) => method.id === paymentMethod)?.kind === 'pix'
                   ? `Pagar com Pix • ${formatPrice(priced.total)}`
-                  : `Pagar com cartão • ${formatPrice(priced.total)}`
+                  : paymentMethods.find((method) => method.id === paymentMethod)?.kind === 'card'
+                    ? `Pagar com cartão • ${formatPrice(priced.total)}`
+                    : `Pedir • pagar na entrega ${formatPrice(priced.total)}`
             }
             onPress={handlePlaceOrder}
-            loading={loading || freightPending}
-            disabled={freightPending || (business != null && !business.isOpen)}
+            loading={loading || (freightPending && paymentMethods.find((method) => method.id === paymentMethod)?.kind !== 'pix')}
+            disabled={
+              (freightPending &&
+                paymentMethods.find((method) => method.id === paymentMethod)?.kind !== 'pix') ||
+              (business != null && !business.isOpen)
+            }
             size="lg"
           />
         </View>
@@ -1119,6 +1313,42 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
   },
+  gpsBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  gpsBannerOn: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  gpsBannerOff: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FCD34D',
+  },
+  gpsBannerTitle: {
+    fontWeight: '800',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  gpsBannerTitleOn: { color: '#047857' },
+  gpsBannerText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  gpsBtn: {
+    backgroundColor: '#B45309',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  gpsBtnText: { color: '#fff', fontWeight: '800' },
   addressChips: { gap: theme.spacing.sm, marginBottom: theme.spacing.md },
   addressChip: {
     flexDirection: 'row',

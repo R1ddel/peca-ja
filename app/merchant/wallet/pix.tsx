@@ -12,8 +12,8 @@ import { BackHeader } from '@/components/BackHeader';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
-import { getShopByApplicationId } from '@/utils/merchantShop';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
+import { syncPayoutProfile } from '@/services/orderLedgerClient';
 import {
   MerchantWallet,
   PixKeyType,
@@ -37,10 +37,8 @@ export default function MerchantPixScreen() {
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
-    const app = await resolveMerchantApplication(user?.email);
-    if (!app) return;
-    const shop = await getShopByApplicationId(app.id);
-    if (!shop) return;
+    const { app, shop } = await resolveOperatorMerchantContext(user?.email);
+    if (!app || !shop) return;
     setAppId(app.id);
     setBusinessId(shop.businessId);
     const w = await getWallet(shop.businessId);
@@ -61,7 +59,10 @@ export default function MerchantPixScreen() {
   );
 
   async function save() {
-    if (!businessId || !appId) return;
+    if (!businessId || !appId) {
+      Alert.alert('Chave Pix', 'Abra a carteira da loja e tente de novo.');
+      return;
+    }
     setSaving(true);
     try {
       const next = await savePixKey({
@@ -72,10 +73,19 @@ export default function MerchantPixScreen() {
         pixHolderName: holder,
         pixDocument: document,
       });
+      if (next.pixKey && next.pixKeyType && next.pixDocument) {
+        await syncPayoutProfile({
+          ownerType: 'merchant',
+          ownerId: businessId,
+          pixKey: next.pixKey,
+          pixKeyType: next.pixKeyType,
+          holderName: next.pixHolderName || holder,
+          document: next.pixDocument,
+        });
+      }
       setWallet(next);
-      Alert.alert('Chave Pix', 'Salva com sucesso.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      router.replace('/merchant/wallet' as any);
+      return;
     } catch (e: any) {
       Alert.alert('Chave Pix', e?.message ?? 'Não foi possível salvar.');
     } finally {

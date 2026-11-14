@@ -7,11 +7,19 @@ import type { ReactNode } from 'react';
 // do not have access to the DOM or browser APIs.
 export default function Root({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR">
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <title>Peça Já</title>
+        <meta name="description" content="Peça Já. Delivery do jeito certo." />
+        <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content="default-src 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; img-src 'self' data: https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://*.expo.dev; frame-src 'self' https://maps.google.com https://www.google.com https://google.com https://*.google.com; connect-src 'self' https://api-production-8092.up.railway.app https://api.peca-ja.expo.app https://*.expo.dev https://api.mercadopago.com https://api.resend.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://tile.openstreetmap.de https://router.project-osrm.org https://*.googleapis.com https://*.gstatic.com;"
+        />
 
         {/*
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native.

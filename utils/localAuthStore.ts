@@ -110,7 +110,7 @@ export async function hydrateLocalAccountIfRemembered(
     email: e,
     phone: typeof sessionUser?.phone === 'string' ? sessionUser.phone : '',
     address: typeof sessionUser?.address === 'string' ? sessionUser.address : '',
-    password: savedMatch ? saved.password : `__pending_reset_${Date.now()}`,
+    password: `__pending_reset_${Date.now()}`,
     photoUrl: sessionUser?.photoUrl,
     coverUrl: sessionUser?.coverUrl,
     bio: sessionUser?.bio,

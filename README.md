@@ -1,6 +1,6 @@
 # Peça Já
 
-App de delivery multi-papel (cliente · comércio · entregador · suporte) no **Expo SDK 54** / Expo Go.
+App de delivery multi-papel (cliente · comércio · entregador · suporte) no **Expo SDK 57** / Expo Go.
 
 > **Regra crítica:** não usar `react-native-reanimated` nem `react-native-worklets` (quebra no motor do celular).
 

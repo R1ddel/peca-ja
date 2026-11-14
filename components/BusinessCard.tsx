@@ -22,10 +22,21 @@ import { getBusinessLogoSource } from '@/utils/businessLogos';
 
 interface BusinessCardProps {
   business: Business;
-  /** default = lista; grid = 2 colunas; tile = carrossel horizontal */
-  variant?: 'default' | 'compact' | 'grid' | 'tile';
+  /** default = lista; grid = 2 colunas; tile = carrossel clássico; featured/catalog = vitrine */
+  variant?: 'default' | 'compact' | 'grid' | 'tile' | 'featured' | 'catalog';
   /** Índice na lista — atrasa a entrada em cascata (leve). */
   index?: number;
+}
+
+function promoBadgeLabel(business: Business): string | null {
+  if (business.deliveryFee === 0) return 'Frete grátis';
+  const promoItem = business.menu?.find((m) => m.promo != null && m.promo < m.price);
+  if (promoItem && promoItem.promo != null && promoItem.price > 0) {
+    const pct = Math.round((1 - promoItem.promo / promoItem.price) * 100);
+    if (pct >= 5 && pct <= 70) return `${pct}% OFF`;
+  }
+  if (business.plan === TOP_MERCHANT_PLAN) return MERCHANT_PLANS.destaque.badge;
+  return null;
 }
 
 export function BusinessCard({ business, variant = 'default', index = 0 }: BusinessCardProps) {
@@ -40,6 +51,8 @@ export function BusinessCard({ business, variant = 'default', index = 0 }: Busin
   const gridPad = theme.spacing.md;
   const gridWidth = (screenW - gridPad * 2 - gridGap) / 2;
   const tileWidth = Math.min(148, screenW * 0.38);
+  const featuredWidth = Math.min(268, screenW * 0.72);
+  const catalogWidth = Math.min(148, screenW * 0.4);
 
   useEffect(() => {
     opacity.setValue(0);
@@ -67,6 +80,94 @@ export function BusinessCard({ business, variant = 'default', index = 0 }: Busin
     return () => anim.stop();
   }, [business.id, index, opacity, translateY]);
 
+  const imageSource = getBusinessLogoSource({
+    name: business.name,
+    category: business.category,
+    image: business.coverImage || business.image,
+  });
+
+  const go = () => router.push(`/business/${business.id}`);
+
+  if (variant === 'featured') {
+    const badge = promoBadgeLabel(business);
+    return (
+      <Animated.View style={[{ opacity, transform: [{ translateY }], width: featuredWidth }]}>
+        <TouchableOpacity
+          style={styles.featuredCard}
+          activeOpacity={0.9}
+          onPress={go}
+          accessibilityRole="button"
+          accessibilityLabel={`${business.name}, destaque`}
+        >
+          <Image
+            source={imageSource}
+            style={styles.featuredImage}
+            resizeMode="cover"
+            defaultSource={require('../assets/merchants/logos/shops/_default.png')}
+          />
+          {badge ? (
+            <View style={styles.featuredPromo}>
+              <Text style={styles.featuredPromoText}>{badge}</Text>
+            </View>
+          ) : null}
+          <View style={styles.featuredNamePill}>
+            <Text style={styles.featuredName} numberOfLines={1}>
+              {business.name}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+
+  if (variant === 'catalog') {
+    return (
+      <Animated.View style={[{ opacity, transform: [{ translateY }], width: catalogWidth }]}>
+        <TouchableOpacity
+          style={styles.catalogCard}
+          activeOpacity={0.9}
+          onPress={go}
+          accessibilityRole="button"
+          accessibilityLabel={`${business.name}, ${category.label}`}
+        >
+          <View style={styles.catalogImageWrap}>
+            <Image
+              source={imageSource}
+              style={styles.catalogImage}
+              resizeMode="cover"
+              defaultSource={require('../assets/merchants/logos/shops/_default.png')}
+            />
+          </View>
+          <Text style={styles.catalogName} numberOfLines={1}>
+            {business.name}
+          </Text>
+          <Text style={styles.catalogCat} numberOfLines={1}>
+            {category.label}
+          </Text>
+          <View style={styles.catalogStatusRow}>
+            <View
+              style={[
+                styles.catalogDot,
+                { backgroundColor: business.isOpen ? theme.colors.primary : theme.colors.textMuted },
+              ]}
+            />
+            <Text
+              style={[
+                styles.catalogStatus,
+                !business.isOpen && { color: theme.colors.textMuted },
+              ]}
+            >
+              {business.isOpen ? 'Aberto' : 'Fechado'}
+            </Text>
+          </View>
+          <Text style={styles.catalogTime} numberOfLines={1}>
+            {business.deliveryTime}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+
   const isGrid = variant === 'grid';
   const isTile = variant === 'tile';
   const isCompact = variant === 'compact';
@@ -88,7 +189,7 @@ export function BusinessCard({ business, variant = 'default', index = 0 }: Busin
           isTile && styles.tileCard,
         ]}
         activeOpacity={0.85}
-        onPress={() => router.push(`/business/${business.id}`)}
+        onPress={go}
         accessibilityRole="button"
         accessibilityLabel={`${business.name}, nota ${business.rating}`}
       >
@@ -355,5 +456,107 @@ const styles = StyleSheet.create({
   },
   denseFee: {
     fontSize: 11,
+  },
+
+  /* —— Vitrine: destaque —— */
+  featuredCard: {
+    height: 168,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.borderLight,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+  },
+  featuredImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  featuredPromo: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  featuredPromoText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  featuredNamePill: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  featuredName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+
+  /* —— Vitrine: card de categoria —— */
+  catalogCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    shadowColor: theme.colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  catalogImageWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.borderLight,
+    marginBottom: 8,
+  },
+  catalogImage: {
+    width: '100%',
+    height: '100%',
+  },
+  catalogName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  catalogCat: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginBottom: 6,
+  },
+  catalogStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 2,
+  },
+  catalogDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  catalogStatus: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  catalogTime: {
+    fontSize: 11,
+    color: theme.colors.textMuted,
   },
 });

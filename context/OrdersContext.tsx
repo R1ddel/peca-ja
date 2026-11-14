@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Order, CartItem, OrderLineIssue } from '@/types';
+import { ScrollPlaceKeeper } from '@/utils/scrollPlace';
+import type { FleetDriverPresence } from '@/services/fleetTypes';
 import { OrderStatus } from '@/constants/theme';
 import { getBusinessById } from '@/data/businesses';
 import { useAuth } from '@/context/AuthContext';
@@ -17,8 +19,14 @@ import {
   backfillShopOrderNumbers,
   nextShopOrderNumber,
 } from '@/utils/merchantOrderNumber';
-import { creditOrderToWallet, reverseOrderCredit } from '@/utils/merchantWallet';
+import { creditOrderToWallet, debitCashFeeFromWallet, returnCashFeeToWallet, reverseOrderCredit } from '@/utils/merchantWallet';
 import { requestPaymentRefund } from '@/services/paymentRefund';
+import {
+  cancelChatNotice,
+  mapGatewayRefundStatus,
+  orderNeedsGatewayRefund,
+  refundStatusWithoutGateway,
+} from '@/utils/orderRefund';
 import { creditDeliveryToDriverWallet } from '@/utils/driverWallet';
 import { appendSystemMessage, ensureWelcomeMessages } from '@/services/orderChat';
 import {
@@ -41,9 +49,9 @@ import {
 } from '@/utils/seedDriverLeagueDemo';
 import {
   isValidLatLng,
-  resolveBusinessCoords,
   resolveDeliveryCoords,
 } from '@/utils/orderGeo';
+import { resolveMerchantPinFromBusiness } from '@/utils/merchantPin';
 import {
   fleetClaimRemote,
   fleetDeclineRemote,
@@ -59,13 +67,15 @@ import {
 } from '@/services/platformClient';
 import {
   requestMerchantLedgerCredit,
+  requestMerchantCashFeeDebit,
   requestDriverLedgerCredit,
   requestLedgerReverse,
+  requestGatewaySplit,
 } from '@/services/orderLedgerClient';
 import { getPlatformToken } from '@/services/platformSession';
 import { CustomerChatWatcher } from '@/components/CustomerChatWatcher';
 import { clearedDriverAssignment, mergeOrderFields } from '@/utils/orderMerge';
-import { isWithinOrderCancelWindow } from '@/utils/orderCancelWindow';
+import { orderCancelBlockReason } from '@/utils/orderCancelWindow';
 
 async function withPlatformToken<T>(
   fn: (token: string) => Promise<T | null>
@@ -76,6 +86,9 @@ async function withPlatformToken<T>(
 }
 
 type VerifyResult = { ok: true; order: Order } | { ok: false; error: string };
+type DeliveryVerifyResult =
+  | { ok: true; order: Order; freightCloud: 'credited' | 'pending' | 'none' }
+  | { ok: false; error: string };
 
 interface OrdersContextType {
   /** Todos os pedidos locais (comércio/entregador/frota). */
@@ -98,6 +111,11 @@ interface OrdersContextType {
     driverAmount?: number;
     paymentId?: string;
     paymentProvider?: string;
+    settlementMode?: Order['settlementMode'];
+    settlementMerchantPaidViaMp?: boolean;
+    settlementDriverViaLedger?: boolean;
+    settlementApplicationFee?: number;
+    cashFeeDebtRecovered?: number;
     deliveryLatitude?: number;
     deliveryLongitude?: number;
     businessLatitude?: number;
@@ -106,6 +124,8 @@ interface OrdersContextType {
     customerPhone?: string;
     customerPhotoUrl?: string;
     customerBio?: string;
+    deliveryBy?: 'store' | 'app';
+    city?: string;
   }) => Promise<Order>;
   getOrder: (id: string) => Order | undefined;
   /** Pedidos ativos do cliente logado. */
@@ -114,9 +134,12 @@ interface OrdersContextType {
   cancelOrder: (
     orderId: string,
     opts?: { reason?: string; by?: 'customer' | 'merchant' | 'system' }
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  ) => Promise<
+    | { ok: true; refundStatus: Order['refundStatus']; refundMessage?: string }
+    | { ok: false; error: string }
+  >;
   confirmPickupByCode: (orderId: string, code: string) => VerifyResult;
-  confirmDeliveryByCode: (orderId: string, code: string) => VerifyResult;
+  confirmDeliveryByCode: (orderId: string, code: string) => Promise<DeliveryVerifyResult>;
   assignDriverToOrder: (
     orderId: string,
     driver: {
@@ -136,6 +159,8 @@ interface OrdersContextType {
   fleetOnline: boolean;
   /** postgres | filesystem quando a frota respondeu. */
   fleetPersistence: 'postgres' | 'filesystem' | null;
+  /** GPS recente dos motoboys, vindo do sync da frota. */
+  driverLocations: Record<string, DriverLiveFix>;
   /** Roda a fila justa (expira ofertas e oferece novas). */
   runFairDispatch: () => Promise<void>;
   /** Motoboy recusa a oferta exclusiva (e reabre a fila). */
@@ -172,8 +197,6 @@ interface OrdersContextType {
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 const ORDERS_KEY = '@pecaja_orders';
 
-const CANCELABLE: OrderStatus[] = ['pendente', 'confirmado', 'preparando'];
-
 function ensureOrderGeo(order: Order): Order {
   const delivery = resolveDeliveryCoords(order.address, {
     latitude: order.deliveryLatitude,
@@ -184,7 +207,12 @@ function ensureOrderGeo(order: Order): Order {
         latitude: order.businessLatitude as number,
         longitude: order.businessLongitude as number,
       }
-    : resolveBusinessCoords(order.businessId, order.businessName);
+    : resolveMerchantPinFromBusiness(
+        getBusinessById(order.businessId) || {
+          id: order.businessId,
+          name: order.businessName,
+        }
+      );
 
   if (
     order.deliveryLatitude === delivery.latitude &&
@@ -224,6 +252,31 @@ function ensureCodes(order: Order): Order {
   };
 }
 
+export type DriverLiveFix = {
+  latitude: number;
+  longitude: number;
+  heading?: number;
+  at: string;
+};
+
+function driverFixesFromFleet(
+  drivers: Record<string, FleetDriverPresence> | undefined
+): Record<string, DriverLiveFix> {
+  const out: Record<string, DriverLiveFix> = {};
+  if (!drivers) return out;
+  for (const [id, driver] of Object.entries(drivers)) {
+    if (!driver) continue;
+    if (typeof driver.latitude !== 'number' || typeof driver.longitude !== 'number') continue;
+    out[id] = {
+      latitude: driver.latitude,
+      longitude: driver.longitude,
+      heading: driver.heading,
+      at: driver.lastSeenAt,
+    };
+  }
+  return out;
+}
+
 export function OrdersProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -232,10 +285,12 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
   const [fleetPersistence, setFleetPersistence] = useState<
     'postgres' | 'filesystem' | null
   >(null);
+  const [driverLocations, setDriverLocations] = useState<Record<string, DriverLiveFix>>({});
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
   const syncingRef = useRef(false);
   const lastPushRef = useRef(0);
+  const fleetAuthBackoffUntil = useRef(0);
 
   useEffect(() => {
     loadOrders();
@@ -274,8 +329,9 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
 
   const syncFleet = useCallback(
     async (opts?: { runDispatch?: boolean; force?: boolean; extraOrders?: Order[] }) => {
-      if (syncingRef.current && !opts?.force) return;
       const now = Date.now();
+      if (!opts?.force && now < fleetAuthBackoffUntil.current) return;
+      if (syncingRef.current && !opts?.force) return;
       if (!opts?.force && now - lastPushRef.current < 1200) return;
       syncingRef.current = true;
       lastPushRef.current = now;
@@ -287,9 +343,11 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
           runDispatch: opts?.runDispatch !== false,
         });
         if (remote?.ok && Array.isArray(remote.orders)) {
+          fleetAuthBackoffUntil.current = 0;
           setFleetOnline(true);
           if (remote.persistence) setFleetPersistence(remote.persistence);
           applyRemoteOrders(remote.orders);
+          if (remote.drivers) setDriverLocations(driverFixesFromFleet(remote.drivers));
           // Espelha na plataforma (fonte de verdade compartilhada)
           void withPlatformToken((token) =>
             platformSyncOrders(
@@ -303,6 +361,9 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
             }
           });
         } else {
+          if (remote?.code === 'AUTH') {
+            fleetAuthBackoffUntil.current = Date.now() + 60_000;
+          }
           setFleetOnline(false);
           // Sem frota: ainda tenta puxar/empurrar plataforma
           const plat = await withPlatformToken((token) =>
@@ -377,6 +438,11 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       driverAmount?: number;
       paymentId?: string;
       paymentProvider?: string;
+      settlementMode?: Order['settlementMode'];
+      settlementMerchantPaidViaMp?: boolean;
+      settlementDriverViaLedger?: boolean;
+      settlementApplicationFee?: number;
+      cashFeeDebtRecovered?: number;
       deliveryLatitude?: number;
       deliveryLongitude?: number;
       businessLatitude?: number;
@@ -385,6 +451,8 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       customerPhone?: string;
       customerPhotoUrl?: string;
       customerBio?: string;
+      deliveryBy?: 'store' | 'app';
+      city?: string;
     }) => {
       const business = getBusinessById(params.businessId);
       const baseDeliveryFee = resolveDeliveryFee(business?.deliveryFee);
@@ -395,7 +463,9 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       const platformFee = params.platformFee ?? resolvePlatformFee(itemUnits);
       const total = resolveCustomerTotal(params.subtotal, deliveryFee, discount, platformFee);
       const now = new Date().toISOString();
-      const paid = !!params.paymentConfirmed;
+      const storeDelivers = (params.deliveryBy ?? business?.deliveryBy) === 'store';
+      const cashOnDelivery = params.paymentProvider === 'offline' && storeDelivers;
+      const paid = !!params.paymentConfirmed && !cashOnDelivery;
       const orderId = `PJ${Date.now().toString().slice(-8)}`;
       const { pickupCode, deliveryCode } = generateOrderVerificationCodes();
       const delivery = resolveDeliveryCoords(params.address, {
@@ -410,7 +480,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
             latitude: params.businessLatitude as number,
             longitude: params.businessLongitude as number,
           }
-        : resolveBusinessCoords(params.businessId, business?.name);
+        : resolveMerchantPinFromBusiness(business);
 
       let created!: Order;
       setOrders((prev) => {
@@ -426,7 +496,9 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
           deliveryFee,
           discount: discount > 0 ? discount : undefined,
           total,
-          status: paid ? 'confirmado' : 'pendente',
+          status: paid || cashOnDelivery ? 'confirmado' : 'pendente',
+          deliveryBy: params.deliveryBy ?? business?.deliveryBy ?? 'app',
+          city: params.city?.trim() || business?.city,
           address: params.address,
           deliveryLatitude: delivery.latitude,
           deliveryLongitude: delivery.longitude,
@@ -437,12 +509,22 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
           updatedAt: now,
           estimatedDelivery: business?.deliveryTime ?? '30-45 min',
           platformFee,
+          cashFeePixAmount: cashOnDelivery ? platformFee : undefined,
           establishmentAmount:
             params.establishmentAmount ??
             resolveEstablishmentAmount(params.subtotal, discount),
           driverAmount: params.driverAmount ?? deliveryFee,
           paymentId: params.paymentId,
           paymentProvider: params.paymentProvider,
+          settlementMode: params.settlementMode,
+          settlementMerchantPaidViaMp: params.settlementMerchantPaidViaMp,
+          settlementDriverViaLedger: params.settlementDriverViaLedger,
+          settlementApplicationFee: params.settlementApplicationFee,
+          cashFeeDebtRecovered:
+            typeof params.cashFeeDebtRecovered === 'number' &&
+            params.cashFeeDebtRecovered > 0
+              ? params.cashFeeDebtRecovered
+              : undefined,
           paymentConfirmed: paid,
           // Sem auto-assign: motoboy real aceita no painel
           driverId: undefined,
@@ -465,14 +547,15 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
           businessName: created.businessName,
           status: created.status,
         }).catch(() => {});
-        creditOrderToWallet(created).catch(() => {});
-        void (async () => {
-          await withPlatformToken((token) => platformUpsertOrder(created, token));
-          const credit = await requestMerchantLedgerCredit(created);
-          if (!credit.ok) {
-            console.warn('[ledger] crédito loja falhou', created.id, credit.code, credit.message);
+        void withPlatformToken((token) => platformUpsertOrder(created, token));
+      } else if (cashOnDelivery && (created.platformFee ?? 0) >= 0.01) {
+        debitCashFeeFromWallet(created).catch(() => {});
+        void requestMerchantCashFeeDebit(created).then((fee) => {
+          if (!fee.ok) {
+            console.warn('[ledger] taxa do dinheiro falhou', created.id, fee.code, fee.message);
           }
-        })();
+        });
+        void withPlatformToken((token) => platformUpsertOrder(created, token));
       } else {
         void withPlatformToken((token) => platformUpsertOrder(created, token));
       }
@@ -507,14 +590,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       })
     );
     if (credited) {
-      creditOrderToWallet(credited).catch(() => {});
-      void (async () => {
-        await withPlatformToken((token) => platformUpsertOrder(credited!, token));
-        const credit = await requestMerchantLedgerCredit(credited!);
-        if (!credit.ok) {
-          console.warn('[ledger] crédito loja falhou', credited!.id, credit.code, credit.message);
-        }
-      })();
+      void withPlatformToken((token) => platformUpsertOrder(credited!, token));
     }
   }, []);
 
@@ -525,22 +601,14 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
     ) => {
       const target = ordersRef.current.find((o) => o.id === orderId);
       if (!target) return { ok: false as const, error: 'Pedido não encontrado.' };
-      if (target.pickupVerifiedAt) {
-        return {
-          ok: false as const,
-          error: 'Não é possível cancelar: o entregador já retirou o pedido no comércio.',
-        };
+      const block = orderCancelBlockReason(target, opts?.by ?? 'customer');
+      if (block) {
+        return { ok: false as const, error: block };
       }
-      if (!isWithinOrderCancelWindow(target.createdAt)) {
+      if (target.status === 'entregue' || target.status === 'cancelado') {
         return {
           ok: false as const,
-          error: 'O cancelamento só é permitido nos primeiros 2 minutos após o pedido.',
-        };
-      }
-      if (!CANCELABLE.includes(target.status)) {
-        return {
-          ok: false as const,
-          error: 'Só é possível cancelar antes da retirada no comércio.',
+          error: 'Este pedido não pode mais ser cancelado.',
         };
       }
       const reason = (opts?.reason || '').trim();
@@ -551,15 +619,14 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      const needsRefund =
-        !!target.paymentConfirmed &&
-        !!target.paymentId &&
-        (target.paymentProvider === 'mercadopago' ||
-          target.paymentProvider === 'card' ||
-          (!target.paymentProvider && !String(target.paymentId).startsWith('mock_')));
+      const needsRefund = orderNeedsGatewayRefund(target);
+      let refundStatus: Order['refundStatus'] = refundStatusWithoutGateway(target);
+      let refundId: string | undefined;
+      let refundMessage: string | undefined;
+      const refundAt = new Date().toISOString();
 
       if (needsRefund && target.paymentId) {
-        // Garante pedido no servidor antes do auth do refund
+        // Pedido no servidor antes do auth do refund — sem estorno ok, não cancela.
         await withPlatformToken((token) => platformUpsertOrder(target, token));
         const refund = await requestPaymentRefund({
           paymentId: target.paymentId,
@@ -572,8 +639,32 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
             ok: false as const,
             error:
               refund.message ||
-              'Não foi possível estornar o pagamento. Tente de novo ou fale com o suporte.',
+              'Não foi possível estornar o pagamento. O pedido continua ativo. Tente de novo ou fale com o suporte.',
           };
+        }
+        if (refund.skipped) {
+          refundStatus = 'skipped';
+          refundMessage = refund.message || 'Pagamento local/mock — sem estorno no gateway.';
+        } else {
+          const fromApi = refund.refundStatus;
+          const mapped =
+            fromApi === 'confirmed' || fromApi === 'processing' || fromApi === 'failed'
+              ? fromApi
+              : mapGatewayRefundStatus(refund.status);
+          if (mapped === 'failed') {
+            return {
+              ok: false as const,
+              error:
+                refund.message ||
+                'O gateway recusou o estorno. O pedido não foi cancelado. Fale com o suporte.',
+            };
+          }
+          refundStatus = mapped;
+          refundId = refund.refundId;
+          refundMessage =
+            mapped === 'confirmed'
+              ? 'Estorno confirmado no Mercado Pago.'
+              : 'Estorno enviado ao Mercado Pago e em processamento.';
         }
       }
 
@@ -584,6 +675,10 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         cancelledBy: opts?.by ?? 'system',
         cancelledAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        refundStatus,
+        refundId,
+        refundMessage,
+        refundAt,
         // Libera motoboy se ainda estava atribuído
         driverId: null,
         driverName: null,
@@ -601,18 +696,31 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         cancelReason: reason,
       }).catch(() => {});
       reverseOrderCredit(cancelled).catch(() => {});
+      returnCashFeeToWallet(cancelled).catch(() => {});
       // Ledger reverse já roda no endpoint de refund; reforço se não houve refund
       if (!needsRefund) {
         void requestLedgerReverse(cancelled);
       }
       void withPlatformToken((token) => platformUpsertOrder(cancelled, token));
       void syncFleet({ force: true, extraOrders: [cancelled] });
+      const notice = cancelChatNotice(cancelled, reason);
       appendSystemMessage({
         orderId,
         peer: 'merchant',
-        text: `Pedido cancelado (${opts?.by ?? 'system'}): ${reason}`,
+        text: notice,
       }).catch(() => {});
-      return { ok: true as const };
+      if (target.driverId) {
+        appendSystemMessage({
+          orderId,
+          peer: 'driver',
+          text: notice,
+        }).catch(() => {});
+      }
+      return {
+        ok: true as const,
+        refundStatus,
+        refundMessage,
+      };
     },
     [syncFleet]
   );
@@ -661,9 +769,11 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         businessName: next.businessName,
         status: next.status,
       }).catch(() => {});
+      void withPlatformToken((token) => platformUpsertOrder(next, token));
+      void syncFleet({ force: true, extraOrders: [next] });
       return { ok: true, order: next };
     },
-    [orders]
+    [orders, syncFleet]
   );
 
   const markOrderPreparing = useCallback(
@@ -690,9 +800,11 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         businessName: next.businessName,
         status: next.status,
       }).catch(() => {});
+      void withPlatformToken((token) => platformUpsertOrder(next, token));
+      void syncFleet({ force: true, extraOrders: [next] });
       return { ok: true, order: next };
     },
-    [orders]
+    [orders, syncFleet]
   );
 
   const markOrderKitchenReady = useCallback(
@@ -982,7 +1094,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
   );
 
   const confirmDeliveryByCode = useCallback(
-    (orderId: string, code: string): VerifyResult => {
+    async (orderId: string, code: string): Promise<DeliveryVerifyResult> => {
       const typed = normalizeCodeInput(code);
       const current = orders.find((o) => o.id === orderId);
       if (!current) return { ok: false, error: 'Pedido não encontrado.' };
@@ -1019,28 +1131,66 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         businessName: next.businessName,
         status: next.status,
       }).catch(() => {});
+      creditOrderToWallet(next).catch(() => {});
       creditDeliveryToDriverWallet(next).catch(() => {});
-      if (next.driverId && next.driverAmount) {
-        void (async () => {
-          const stamped =
-            user?.id && !next.driverPlatformUserId
-              ? { ...next, driverPlatformUserId: user.id }
-              : next;
-          if (stamped !== next) {
-            setOrders((prev) => prev.map((o) => (o.id === orderId ? stamped : o)));
-          }
-          await withPlatformToken((token) => platformUpsertOrder(stamped, token));
-          const credit = await requestDriverLedgerCredit(stamped);
-          if (!credit.ok) {
-            console.warn('[ledger] crédito frete falhou', stamped.id, credit.code, credit.message);
-          }
-        })();
-      } else {
-        void withPlatformToken((token) => platformUpsertOrder(next, token));
+
+      let booked: Order =
+        user?.id && !next.driverPlatformUserId
+          ? { ...next, driverPlatformUserId: user.id }
+          : next;
+      if (booked.paymentProvider !== 'offline') {
+        const gatewaySplit = await requestGatewaySplit(booked);
+        if (gatewaySplit) {
+          booked = { ...booked, gatewaySplit };
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? booked : o)));
+        }
       }
-      return { ok: true, order: next };
+      const booksMerchantLedger =
+        booked.paymentProvider !== 'offline' && (booked.establishmentAmount ?? 0) > 0;
+      if (booksMerchantLedger) {
+        const merchantCredit = await requestMerchantLedgerCredit(booked);
+        const merchantLedgerCredit: Order['merchantLedgerCredit'] =
+          merchantCredit.ok && merchantCredit.skipped
+            ? 'skipped'
+            : merchantCredit.ok
+              ? 'credited'
+              : 'pending';
+        booked = { ...booked, merchantLedgerCredit };
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? booked : o)));
+        if (!merchantCredit.ok) {
+          console.warn(
+            '[ledger] crédito loja falhou',
+            next.id,
+            merchantCredit.code,
+            merchantCredit.message
+          );
+        }
+      }
+      void syncFleet({ force: true, extraOrders: [booked] });
+
+      if (booked.driverId && booked.driverAmount) {
+        const stamped =
+          user?.id && !booked.driverPlatformUserId
+            ? { ...booked, driverPlatformUserId: user.id }
+            : booked;
+        if (stamped !== booked) {
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? stamped : o)));
+        }
+        await withPlatformToken((token) => platformUpsertOrder(stamped, token));
+        const credit = await requestDriverLedgerCredit(stamped);
+        if (!credit.ok) {
+          console.warn('[ledger] crédito frete falhou', stamped.id, credit.code, credit.message);
+        }
+        return {
+          ok: true,
+          order: stamped,
+          freightCloud: credit.ok ? 'credited' : 'pending',
+        };
+      }
+      void withPlatformToken((token) => platformUpsertOrder(booked, token));
+      return { ok: true, order: booked, freightCloud: 'none' };
     },
-    [orders, user?.id]
+    [orders, syncFleet, user?.id]
   );
 
   const assignDriverToOrder = useCallback(
@@ -1332,6 +1482,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         fleetOnline,
         fleetPersistence,
+        driverLocations,
         createOrder,
         getOrder,
         activeOrders,
@@ -1353,6 +1504,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
         removeUnavailableLine,
       }}
     >
+      <ScrollPlaceKeeper />
       {children}
       <CustomerChatWatcher />
     </OrdersContext.Provider>
