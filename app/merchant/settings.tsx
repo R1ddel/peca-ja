@@ -8,17 +8,19 @@ import {
   Image,
   Alert,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useFocusEffect, router } from 'expo-router';
 import { BackHeader } from '@/components/BackHeader';
 import { Button } from '@/components/Button';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import {
   MerchantShop,
   getShopByApplicationId,
@@ -36,6 +38,15 @@ import {
   parseHoursToWeekly,
 } from '@/utils/weeklyHours';
 import { theme } from '@/constants/theme';
+import {
+  ShopPaymentMethod,
+  defaultShopPayments,
+  newCustomPayment,
+  normalizeShopPayments,
+} from '@/utils/paymentMethods';
+import { ShopDeliveryMode } from '@/utils/shopDelivery';
+import { isValidLatLng } from '@/utils/orderGeo';
+
 
 export default function MerchantSettingsScreen() {
   const { user } = useAuth();
@@ -46,13 +57,17 @@ export default function MerchantSettingsScreen() {
   const [deliveryTime, setDeliveryTime] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
   const [minOrder, setMinOrder] = useState('');
+  const [payments, setPayments] = useState<ShopPaymentMethod[]>(() => defaultShopPayments());
+  const [deliveryBy, setDeliveryBy] = useState<ShopDeliveryMode>('app');
+  const [newPaymentName, setNewPaymentName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const app = await resolveMerchantApplication(user?.email);
+    const { app, shop: foundShop } = await resolveOperatorMerchantContext(user?.email);
     if (!app) return;
     setAppId(app.id);
-    const s = await getShopByApplicationId(app.id);
+    const s = foundShop ?? (await getShopByApplicationId(app.id));
     if (!s) return;
     setShop(s);
     setDescription(s.description);
@@ -60,6 +75,8 @@ export default function MerchantSettingsScreen() {
     setDeliveryTime(s.deliveryTime);
     setDeliveryFee(String(s.deliveryFee).replace('.', ','));
     setMinOrder(String(s.minOrder).replace('.', ','));
+    setPayments(normalizeShopPayments(s.acceptedPayments));
+    setDeliveryBy(s.deliveryBy === 'store' ? 'store' : 'app');
   }, [user?.email]);
 
   useFocusEffect(
@@ -84,8 +101,8 @@ export default function MerchantSettingsScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.85,
-      allowsEditing: true,
-      aspect: kind === 'image' ? [1, 1] : [16, 9],
+      // allowsEditing trava o retorno em vários Android/Expo Go
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets[0]?.uri || !appId) return;
     const updated = await patchShop(appId, { [kind]: result.assets[0].uri });
@@ -116,10 +133,122 @@ export default function MerchantSettingsScreen() {
     }
   }
 
+  async function persistDelivery(next: ShopDeliveryMode) {
+    setDeliveryBy(next);
+    if (!appId) return;
+    const updated = await patchShop(appId, { deliveryBy: next });
+    if (updated) setShop(updated);
+  }
+
+  async function persistPayments(next: ShopPaymentMethod[]) {
+    const safe = normalizeShopPayments(next);
+    setPayments(safe);
+    if (!appId) return;
+    const updated = await patchShop(appId, { acceptedPayments: safe });
+    if (updated) setShop(updated);
+  }
+
+  function togglePayment(id: string, enabled: boolean) {
+    const next = payments.map((method) => (method.id === id ? { ...method, enabled } : method));
+    if (!next.some((method) => method.enabled)) {
+      Alert.alert('Pagamento', 'A loja precisa aceitar pelo menos uma forma.');
+      return;
+    }
+    void persistPayments(next);
+  }
+
+  function addPayment() {
+    const created = newCustomPayment(newPaymentName);
+    if (!created) {
+      Alert.alert('Pagamento', 'Escreva o nome do método. Ex.: Vale refeição.');
+      return;
+    }
+    const exists = payments.some(
+      (method) => method.label.toLowerCase() === created.label.toLowerCase()
+    );
+    if (exists) {
+      Alert.alert('Pagamento', 'Essa forma já está na lista.');
+      return;
+    }
+    setNewPaymentName('');
+    void persistPayments([...payments, created]);
+  }
+
+  function removePayment(id: string) {
+    void persistPayments(payments.filter((method) => method.id !== id));
+  }
+
   async function toggleOpen(value: boolean) {
     if (!appId) return;
     const updated = await patchShop(appId, { isOpen: value });
     if (updated) setShop(updated);
+  }
+
+  async function setPinFromGps() {
+    if (!appId) return;
+    setPinBusy(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'GPS',
+          'Permita a localização neste celular (deve estar na loja) para gravar o pin do frete.'
+        );
+        return;
+      }
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('gps-timeout')), 12000)
+        ),
+      ]);
+      const { latitude, longitude } = pos.coords;
+      if (!isValidLatLng(latitude, longitude)) {
+        Alert.alert('GPS', 'Não foi possível ler a posição.');
+        return;
+      }
+      const updated = await patchShop(appId, { latitude, longitude });
+      if (updated) {
+        setShop(updated);
+        Alert.alert(
+          'Pin salvo',
+          'O frete do cliente agora usa este ponto até a porta dele. Atualize se mudar de endereço.'
+        );
+      }
+    } catch {
+      Alert.alert(
+        'GPS',
+        'Falha ao ler a localização (demorou ou sem sinal). Fique na loja e tente de novo.'
+      );
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
+  async function clearPin() {
+    if (!appId || !shop) return;
+    Alert.alert(
+      'Remover pin',
+      'Sem pin o frete fica menos preciso (ponto aproximado na cidade). Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const updated = await patchShop(appId, {
+                latitude: undefined,
+                longitude: undefined,
+              });
+              if (updated) setShop({ ...updated, latitude: undefined, longitude: undefined });
+            })();
+          },
+        },
+      ]
+    );
   }
 
   if (!shop) {
@@ -287,8 +416,120 @@ export default function MerchantSettingsScreen() {
           </View>
         </View>
         <Text style={styles.feeHint}>
-          Checkout pelo GPS: R$ 5 na cidade · R$ 15 fora (até 13 km) · mais longe sobe por km.
+          Frete no checkout: pin da loja → GPS do cliente (R$ 5 na cidade · R$ 15 até 13 km · depois sobe por km).
         </Text>
+
+        <Text style={styles.blockTitle}>Pin no mapa</Text>
+        <Text style={styles.feeHint}>
+          Grave a posição real da loja. Sem isso o frete usa um ponto aproximado na cidade e o motoboy pode errar a retirada.
+        </Text>
+        {shop.address ? (
+          <Text style={styles.pinAddress}>{shop.address}</Text>
+        ) : null}
+        <View style={styles.pinCard}>
+          <Ionicons
+            name={
+              isValidLatLng(shop.latitude, shop.longitude)
+                ? 'location'
+                : 'location-outline'
+            }
+            size={22}
+            color={
+              isValidLatLng(shop.latitude, shop.longitude)
+                ? theme.colors.primary
+                : theme.colors.textMuted
+            }
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pinStatus}>
+              {isValidLatLng(shop.latitude, shop.longitude)
+                ? 'Pin gravado'
+                : 'Sem pin — frete aproximado'}
+            </Text>
+            <Text style={styles.pinCoords}>
+              {isValidLatLng(shop.latitude, shop.longitude)
+                ? `${(shop.latitude as number).toFixed(5)}, ${(shop.longitude as number).toFixed(5)}`
+                : 'Toque em “Usar GPS neste celular” estando na loja'}
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[styles.pinBtn, pinBusy && styles.pinBtnDisabled]}
+          onPress={() => void setPinFromGps()}
+          disabled={pinBusy}
+          activeOpacity={0.85}
+        >
+          {pinBusy ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="navigate" size={18} color="#fff" />
+              <Text style={styles.pinBtnText}>Usar GPS neste celular</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        {isValidLatLng(shop.latitude, shop.longitude) ? (
+          <TouchableOpacity onPress={() => void clearPin()} style={styles.pinClear}>
+            <Text style={styles.pinClearText}>Remover pin</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <Text style={styles.label}>Quem entrega</Text>
+        <TouchableOpacity
+          style={[styles.choice, deliveryBy === 'store' && styles.choiceOn]}
+          onPress={() => void persistDelivery('store')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.payLabel}>A loja tem entregador</Text>
+          <Text style={styles.payHint}>O motoboy do app não recebe esses pedidos. No dinheiro, a cédula fica na loja e a taxa Peça Já sai do caixa Pix.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.choice, deliveryBy === 'app' && styles.choiceOn]}
+          onPress={() => void persistDelivery('app')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.payLabel}>Motoboy do Peça Já</Text>
+          <Text style={styles.payHint}>
+            Só Pix e cartão. O motoboy não leva dinheiro. O frete vai para ele. A loja recebe só a parte dela, depois da entrega.
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.label}>Pagamentos que a loja aceita</Text>
+        <Text style={styles.feeHint}>
+          Pix e cartão cobram na hora. Dinheiro e outras formas na entrega só aparecem se a loja entrega com a equipe dela.
+        </Text>
+        {payments.map((method) => (
+          <View key={method.id} style={styles.payRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.payLabel}>{method.label}</Text>
+              {method.custom ? <Text style={styles.payHint}>Criado por esta loja</Text> : null}
+            </View>
+            {method.custom ? (
+              <TouchableOpacity onPress={() => removePayment(method.id)} hitSlop={8}>
+                <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+              </TouchableOpacity>
+            ) : null}
+            <Switch
+              value={method.enabled}
+              onValueChange={(enabled) => togglePayment(method.id, enabled)}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primaryMuted }}
+              thumbColor={method.enabled ? theme.colors.primary : theme.colors.surface}
+            />
+          </View>
+        ))}
+        <View style={styles.payAdd}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            value={newPaymentName}
+            onChangeText={setNewPaymentName}
+            placeholder="Adicionar outro. Ex.: Vale refeição"
+            placeholderTextColor={theme.colors.textMuted}
+            onSubmitEditing={addPayment}
+          />
+          <TouchableOpacity style={styles.payAddBtn} onPress={addPayment} activeOpacity={0.85}>
+            <Text style={styles.payAddBtnText}>Adicionar</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.idChip}>
           <Ionicons name="finger-print-outline" size={14} color={theme.colors.textMuted} />
@@ -404,6 +645,53 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
+  pinAddress: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  pinCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    marginBottom: 10,
+    marginTop: 6,
+  },
+  pinStatus: {
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+    fontSize: 14,
+  },
+  pinCoords: {
+    marginTop: 2,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    lineHeight: 16,
+  },
+  pinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 8,
+  },
+  pinBtnDisabled: { opacity: 0.6 },
+  pinBtnText: { color: '#fff', fontWeight: theme.fontWeight.bold, fontSize: 15 },
+  pinClear: { alignItems: 'center', paddingVertical: 8, marginBottom: theme.spacing.md },
+  pinClearText: {
+    color: theme.colors.error,
+    fontWeight: theme.fontWeight.semibold,
+    fontSize: 13,
+  },
   hoursSummary: {
     fontSize: 12,
     color: theme.colors.textMuted,
@@ -502,4 +790,38 @@ const styles = StyleSheet.create({
   },
   planTitle: { fontWeight: theme.fontWeight.bold, color: theme.colors.text },
   planHint: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
+  payRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  payLabel: { fontWeight: theme.fontWeight.bold, color: theme.colors.text, fontSize: 14 },
+  payHint: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
+  payAdd: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  payAddBtn: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  payAddBtnText: { color: theme.colors.white, fontWeight: theme.fontWeight.bold },
+  choice: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    padding: 12,
+    marginBottom: 8,
+  },
+  choiceOn: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight,
+  },
 });

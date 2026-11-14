@@ -159,7 +159,7 @@ export function MenuItemDetailModal({ visible, item, onClose, onAdd, disabled }:
                 activeOpacity={0.9}
               >
                 <Ionicons name="add" size={20} color={theme.colors.white} />
-                <Text style={styles.addBtnText}>Adicionar · {formatPrice(price)}</Text>
+                <Text style={styles.addBtnText}>Pedir · {formatPrice(price)}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.closeOnlyBtn} onPress={onClose} activeOpacity={0.9}>

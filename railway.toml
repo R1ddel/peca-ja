@@ -4,6 +4,8 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 5
+healthcheckTimeout = 100
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 10
+# 24/7: sleepApplication=false (CLI/GraphQL) + Postgres no mesmo projeto Railway.
+# Não ligar App Sleeping / Serverless no painel.

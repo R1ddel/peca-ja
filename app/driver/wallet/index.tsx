@@ -42,6 +42,7 @@ export default function DriverWalletScreen() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ledgerBalance, setLedgerBalance] = useState<number | null>(null);
+  const [accountMatches, setAccountMatches] = useState(true);
 
   const refresh = useCallback(async () => {
     const app = await resolveDriverApplication(user?.email);
@@ -55,11 +56,17 @@ export default function DriverWalletScreen() {
     const w = await syncDriverWalletFromOrders(id, app.id, orders);
     setWallet(w);
     const token = await getPlatformToken();
-    if (token && user?.id) {
+    const sameAccount =
+      !!user?.email &&
+      user.email.trim().toLowerCase() === app.email.trim().toLowerCase();
+    setAccountMatches(sameAccount);
+    if (token && user?.id && sameAccount) {
       const led = await platformLedgerList('driver', user.id, token);
       if (led?.ok && typeof (led as any).balance === 'number') {
         setLedgerBalance((led as any).balance);
       }
+    } else {
+      setLedgerBalance(null);
     }
     setReady(true);
   }, [user?.email, user?.id, orders]);
@@ -72,6 +79,13 @@ export default function DriverWalletScreen() {
 
   async function withdrawAll() {
     if (!wallet || !driverId || !appId) return;
+    if (!accountMatches) {
+      Alert.alert(
+        'Conta',
+        'Esta carteira é do motoboy que entrou no painel. Saia e entre de novo com o e-mail dele para sacar.'
+      );
+      return;
+    }
     const localBal = driverAvailableBalance(wallet);
     const bal =
       ledgerBalance != null && ledgerBalance >= 0

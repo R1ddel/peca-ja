@@ -1,5 +1,5 @@
 /**
- * Cupons promocionais: plataforma (demo) + loja (bolso do comerciante).
+ * Cupons do pedido: só os que a loja publicou.
  */
 import {
   findMerchantCoupon,
@@ -17,38 +17,9 @@ export type CouponDef = {
   maxDiscount?: number;
   label: string;
   minSubtotal?: number;
-  /** Quem banca o benefício. */
+  /** Quem banca o benefício. Fica só no cálculo, sem texto para o cliente. */
   fundedBy?: 'platform' | 'merchant';
-  /** id da promoção da loja (quando fundedBy = merchant). */
   merchantPromoId?: string;
-};
-
-export const COUPONS: Record<string, CouponDef> = {
-  PECAJA10: {
-    code: 'PECAJA10',
-    type: 'percent',
-    value: 10,
-    maxDiscount: 15,
-    label: '10% de desconto (máx. R$ 15)',
-    minSubtotal: 20,
-    fundedBy: 'platform',
-  },
-  BEMVINDO: {
-    code: 'BEMVINDO',
-    type: 'fixed',
-    value: 8,
-    label: 'R$ 8 de desconto',
-    minSubtotal: 25,
-    fundedBy: 'platform',
-  },
-  FRETEGRATIS: {
-    code: 'FRETEGRATIS',
-    type: 'free_delivery',
-    value: 0,
-    label: 'Frete grátis',
-    minSubtotal: 15,
-    fundedBy: 'platform',
-  },
 };
 
 export type CouponResult =
@@ -149,12 +120,7 @@ export function applyCoupon(input: {
     return evaluateCoupon(promoToCoupon(merchant), input);
   }
 
-  const coupon = COUPONS[code];
-  if (!coupon) {
-    return { ok: false, error: 'Cupom inválido ou expirado.' };
-  }
-
-  return evaluateCoupon(coupon, input);
+  return { ok: false, error: 'Cupom inválido ou expirado.' };
 }
 
 /** Aplica promoção automática da loja (sem código). */

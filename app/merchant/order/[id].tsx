@@ -16,6 +16,8 @@ import { Button } from '@/components/Button';
 import { KeyboardScreen } from '@/components/KeyboardScreen';
 import { MobileShell } from '@/components/MobileShell';
 import { CustomerLiveMap } from '@/components/CustomerLiveMap';
+import { StoreDeliveryNotice } from '@/components/StoreDeliveryNotice';
+import { CashHandoffCard } from '@/components/CashHandoffCard';
 import { useOrders } from '@/context/OrdersContext';
 import { formatPrice } from '@/data/businesses';
 import { orderStatusConfig, theme } from '@/constants/theme';
@@ -23,6 +25,7 @@ import { getLineTotal } from '@/utils/cartLine';
 import { merchantOrderLabel } from '@/utils/merchantOrderNumber';
 import { formatOrderTime, formatWaitLabel } from '@/utils/datetime';
 import { isMockFleetDriverId } from '@/utils/driverOps';
+import { isStoreOwnDelivery } from '@/utils/customerLiveMap';
 import {
   copyKitchenTicket,
   printKitchenTicketPdf,
@@ -30,13 +33,14 @@ import {
 } from '@/utils/kitchenTicket';
 import { CancelReasonModal } from '@/components/CancelReasonModal';
 import { OrderPersonCard } from '@/components/OrderPersonCard';
-import { isWithinOrderCancelWindow } from '@/utils/orderCancelWindow';
+import { orderCancelBlockReason } from '@/utils/orderCancelWindow';
 
 const STEPS = [
   { key: 'novo', label: 'Novo', icon: 'notifications' as const },
   { key: 'preparo', label: 'Preparo', icon: 'flame' as const },
   { key: 'pronto', label: 'Pronto', icon: 'checkmark-done' as const },
   { key: 'saiu', label: 'Saiu', icon: 'bicycle' as const },
+  { key: 'entregue', label: 'Entregue', icon: 'checkmark-circle' as const },
 ] as const;
 
 function kitchenStep(order: {
@@ -44,7 +48,8 @@ function kitchenStep(order: {
   kitchenReadyAt?: string;
   pickupVerifiedAt?: string;
 }): number {
-  if (order.status === 'entregue' || order.status === 'saiu_entrega' || order.pickupVerifiedAt) {
+  if (order.status === 'entregue') return 4;
+  if (order.status === 'saiu_entrega' || order.pickupVerifiedAt) {
     return 3;
   }
   if (order.kitchenReadyAt) return 2;
@@ -70,13 +75,7 @@ export default function MerchantOrderDetailScreen() {
 
   const order = getOrder(id || '');
   const cfg = order ? orderStatusConfig[order.status] : null;
-  const canCancel =
-    !!order &&
-    !order.pickupVerifiedAt &&
-    (order.status === 'pendente' ||
-      order.status === 'confirmado' ||
-      order.status === 'preparando') &&
-    isWithinOrderCancelWindow(order.createdAt, nowMs);
+  const canCancel = !!order && !orderCancelBlockReason(order, 'merchant', nowMs);
 
   useEffect(() => {
     if (!canCancel) return;
@@ -161,6 +160,15 @@ export default function MerchantOrderDetailScreen() {
       Alert.alert('Não foi possível', res.error);
       return;
     }
+    const refundHint =
+      res.refundStatus === 'confirmed'
+        ? 'Estorno do cliente confirmado.'
+        : res.refundStatus === 'processing'
+          ? 'Estorno do cliente em andamento.'
+          : res.refundStatus === 'not_applicable' || res.refundStatus === 'skipped'
+            ? 'Sem estorno online neste pedido.'
+            : '';
+    Alert.alert('Pedido cancelado', refundHint || 'O cliente foi avisado.');
     router.back();
   }
 
@@ -364,7 +372,17 @@ export default function MerchantOrderDetailScreen() {
           {!!order.discount && order.discount > 0 && (
             <Row label="Desconto" value={`- ${formatPrice(order.discount)}`} />
           )}
-          <Row label="Total" value={formatPrice(order.total)} bold />
+          <Row
+            label={order.paymentProvider === 'offline' ? 'Total em dinheiro' : 'Total'}
+            value={formatPrice(order.total)}
+            bold
+          />
+          {order.paymentProvider === 'offline' && (order.cashFeePixAmount ?? order.platformFee ?? 0) > 0 ? (
+            <Row
+              label="Taxa Peça Já no caixa"
+              value={`- ${formatPrice(order.cashFeePixAmount ?? order.platformFee ?? 0)}`}
+            />
+          ) : null}
         </View>
 
         <Text style={styles.section}>Entrega</Text>
@@ -373,11 +391,14 @@ export default function MerchantOrderDetailScreen() {
         order.status !== 'cancelado' &&
         order.status !== 'entregue' ? (
           <CustomerLiveMap order={order} viewer="merchant" height={240} />
+        ) : isStoreOwnDelivery(order) ? (
+          <StoreDeliveryNotice businessName={order.businessName} viewer="merchant" />
         ) : null}
         <View style={styles.addrCard}>
           <Ionicons name="location" size={18} color={theme.colors.primary} />
           <Text style={styles.addr}>{order.address}</Text>
         </View>
+        <CashHandoffCard order={order} viewer="merchant" />
         <Text style={styles.pay}>
           {order.paymentMethod}
           {order.paymentConfirmed ? ' · pago' : ' · pendente'}

@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Peça Já — opções de panfleto</title>
+  <style>
+    :root {
+      --green: #00a86b;
+      --green-dark: #007a4d;
+      --ink: #1e3a2f;
+      --ink-deep: #0f2119;
+      --gold: #ffb800;
+      --cream: #f3faf6;
+      --paper: #fffdf8;
+      --muted: #5c6f64;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #cfdcd4;
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+    }
+
+    .intro {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px 20px 8px;
+    }
+    .intro h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+    .intro p {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.45;
+      color: #31453a;
+      max-width: 62ch;
+    }
+
+    .gallery {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 16px 56px;
+    }
+    .group-title {
+      margin: 28px 0 14px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #31453a;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .option {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+    }
+    .label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #31453a;
+      background: rgba(255,255,255,0.7);
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+
+    .sheet {
+      width: 148mm;
+      height: 210mm;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 14px 36px rgba(15, 33, 25, 0.22);
+      background: white;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      flex: none;
+    }
+    .logo-lg {
+      width: 56px;
+      height: 56px;
+    }
+    .logo-xl {
+      width: 72px;
+      height: 72px;
+    }
+
+    .brand-word {
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+    .brand-word .ja { color: var(--gold); }
+    .customer-word .ja { color: var(--green); }
+
+    /* =========================================================
+       A — IMPACTO (número 7 gigante)
+       ========================================================= */
+    .a-merch {
+      background: var(--ink-deep);
+      color: white;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .a-merch .hero {
+      position: relative;
+      padding: 7mm 7mm 0;
+      min-height: 92mm;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 88% 18%, rgba(255,184,0,0.28), transparent 42%),
+        linear-gradient(160deg, #163028 0%, #0f2119 55%, #07291c 100%);
+    }
+    .a-merch .hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 2;
+    }
+    .a-merch .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+    }
+    .a-merch .tag {
+      background: var(--gold);
+      color: var(--ink);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 8px;
+      border-radius: 999px;
+    }
+    .a-merch .seven {
+      position: absolute;
+      right: -8mm;
+      top: 8mm;
+      font-size: 168px;
+      font-weight: 900;
+      line-height: 0.8;
+      letter-spacing: -0.08em;
+      color: var(--gold);
+      opacity: 0.95;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .a-merch .hero h1 {
+      position: relative;
+      z-index: 2;
+      margin: 10mm 0 0;
+      max-width: 78%;
+      font-size: 30px;
+      line-height: 0.98;
+      letter-spacing: -0.035em;
+      font-weight: 800;
+    }
+    .a-merch .hero h1 em {
+      font-style: normal;
+      color: var(--gold);
+    }
+    .a-merch .hero p {
+      position: relative;
+      z-index: 2;
+      margin: 3mm 0 0;
+      max-width: 72%;
+      font-size: 13px;
+      line-height: 1.3;
+      color: #d5ebe1;
+    }
+    .a-merch .body {
+      padding: 4mm 7mm 0;
+      background: white;
+      color: var(--ink);
+    }
+    .a-merch .body h2 {
+      margin: 0 0 2.5mm;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--green-dark);
+    }
+    .a-merch .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2mm;
+    }
+    .a-merch .grid div {
+      background: var(--cream);
+      border-radius: 2.5mm;
+      padding: 2.4mm 2.6mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .a-merch .foot {
+      background: white;
+      padding: 3.5mm 7mm 5mm;
+      color: var(--ink);
+    }
+    .a-merch .plans {
+      display: flex;
+      justify-content: space-between;
+      gap: 2mm;
+      margin-bottom: 3mm;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .a-merch .plans span {
+      display: block;
+      color: var(--green-dark);
+      font-size: 11px;
+    }
+    .a-merch .cta {
+      background: var(--green);
+      color: white;
+      border-radius: 3mm;
+      padding: 3mm 3.5mm;
+    }
+    .a-merch .cta strong { display: block; font-size: 13px; }
+    .a-merch .cta .phone {
+      margin-top: 1.5mm;
+      border: 1.5px dashed rgba(255,255,255,0.55);
+      border-radius: 2mm;
+      min-height: 8.5mm;
+      display: flex;
+      align-items: center;
+      padding: 0 3mm;
+      font-size: 14px;
+      letter-spacing: 0.03em;
+      color: #e8fff4;
+    }
+
+    .a-cust {
+      background: var(--cream);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+    }
+    .a-cust .band {
+      background: var(--green);
+      color: white;
+      padding: 8mm 7mm 10mm;
+      position: relative;
+      overflow: hidden;
+    }
+    .a-cust .band::after {
+      content: "";
+      position: absolute;
+      width: 90mm;
+      height: 90mm;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      right: -28mm;
+      top: -30mm;
+    }
+    .a-cust .band-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+    .a-cust .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+    }
+    .a-cust .tag {
+      background: var(--gold);
+      color: var(--ink);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 8px;
+      border-radius: 999px;
+    }
+    .a-cust .band h1 {
+      position: relative;
+      z-index: 1;
+      margin: 8mm 0 0;
+      font-size: 34px;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+      max-width: 95%;
+    }
+    .a-cust .band p {
+      position: relative;
+      z-index: 1;
+      margin: 3.5mm 0 0;
+      font-size: 14px;
+      line-height: 1.3;
+      color: #e7fff4;
+      max-width: 90%;
+    }
+    .a-cust .mid {
+      padding: 5mm 7mm 0;
+      flex: 1;
+    }
+    .a-cust .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm;
+    }
+    .a-cust .chips span {
+      background: white;
+      border: 1.5px solid #cfe3d7;
+      color: var(--green-dark);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 1.6mm 3mm;
+      border-radius: 999px;
+    }
+    .a-cust .steps {
+      margin-top: 5mm;
+      display: grid;
+      gap: 2.2mm;
+    }
+    .a-cust .steps div {
+      display: grid;
+      grid-template-columns: 9mm 1fr;
+      gap: 3mm;
+      align-items: center;
+      background: white;
+      border-radius: 3mm;
+      padding: 2.8mm 3mm;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .a-cust .steps b {
+      width: 9mm;
+      height: 9mm;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--gold);
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+    }
+    .a-cust .foot {
+      margin-top: auto;
+      background: var(--ink);
+      color: white;
+      padding: 5mm 7mm 6mm;
+    }
+    .a-cust .foot strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.15;
+    }
+    .a-cust .foot span {
+      display: block;
+      margin-top: 1.5mm;
+      font-size: 12.5px;
+      color: #cfe3d7;
+    }
+
+    /* =========================================================
+       B — VITRINE (limpa, revista, logo grande)
+       ========================================================= */
+    .b-merch {
+      background: var(--paper);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+    }
+    .b-merch .topbar {
+      background: var(--green);
+      color: white;
+      padding: 5mm 7mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .b-merch .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+    }
+    .b-merch .tag {
+      border: 1.5px solid rgba(255,255,255,0.7);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 999px;
+    }
+    .b-merch .main {
+      padding: 6mm 7mm 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .b-merch .badge {
+      align-self: flex-start;
+      background: var(--gold);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2mm 3mm;
+      border-radius: 2mm;
+    }
+    .b-merch h1 {
+      margin: 3.5mm 0 0;
+      font-size: 33px;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+    }
+    .b-merch .lead {
+      margin: 3mm 0 0;
+      font-size: 14px;
+      line-height: 1.35;
+      color: #3d5248;
+    }
+    .b-merch .trial {
+      margin-top: 4.5mm;
+      border: 2px solid var(--ink);
+      border-radius: 3.5mm;
+      padding: 3.5mm 4mm;
+      display: flex;
+      gap: 3.5mm;
+      align-items: center;
+    }
+    .b-merch .trial .n {
+      font-size: 42px;
+      font-weight: 900;
+      line-height: 0.9;
+      color: var(--green);
+      letter-spacing: -0.05em;
+    }
+    .b-merch .trial .n small {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: var(--ink);
+      margin-top: 1mm;
+    }
+    .b-merch .trial p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.3;
+      font-weight: 600;
+    }
+    .b-merch ul {
+      list-style: none;
+      margin: 4mm 0 0;
+      padding: 0;
+      columns: 2;
+      column-gap: 3mm;
+    }
+    .b-merch li {
+      break-inside: avoid;
+      font-size: 11.5px;
+      line-height: 1.25;
+      font-weight: 700;
+      margin-bottom: 2.2mm;
+      padding-left: 4mm;
+      position: relative;
+    }
+    .b-merch li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 1.5mm;
+      width: 2.2mm;
+      height: 2.2mm;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .b-merch .bottom {
+      margin-top: auto;
+      background: var(--ink);
+      color: white;
+      margin-left: -0;
+      padding: 4.5mm 7mm 5.5mm;
+    }
+    .b-merch .plans {
+      display: flex;
+      justify-content: space-between;
+      gap: 2mm;
+      font-size: 11.5px;
+      font-weight: 700;
+      margin-bottom: 3mm;
+    }
+    .b-merch .plans span {
+      display: block;
+      color: var(--gold);
+      font-size: 11px;
+    }
+    .b-merch .phone {
+      border: 1.5px dashed rgba(255,255,255,0.45);
+      border-radius: 2.5mm;
+      min-height: 9mm;
+      display: flex;
+      align-items: center;
+      padding: 0 3mm;
+      font-size: 14px;
+      color: #d7ebe1;
+    }
+    .b-merch .bottom strong {
+      display: block;
+      margin-bottom: 1.5mm;
+      font-size: 13px;
+    }
+
+    .b-cust {
+      background: white;
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+    }
+    .b-cust .frame {
+      margin: 5mm;
+      flex: 1;
+      border: 2.5px solid var(--green);
+      border-radius: 4mm;
+      padding: 6mm 5.5mm 0;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .b-cust .frame::before {
+      content: "";
+      position: absolute;
+      width: 55mm;
+      height: 55mm;
+      border-radius: 50%;
+      border: 10px solid rgba(0,168,107,0.08);
+      right: -18mm;
+      bottom: 28mm;
+    }
+    .b-cust .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .kicker {
+      margin-top: 7mm;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--green-dark);
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust h1 {
+      margin: 2mm 0 0;
+      font-size: 34px;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .sub {
+      margin: 3.5mm 0 0;
+      font-size: 14px;
+      line-height: 1.35;
+      color: #466056;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .cats {
+      margin-top: 5mm;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2mm;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .cats span {
+      background: var(--cream);
+      color: var(--ink);
+      font-size: 12.5px;
+      font-weight: 700;
+      text-align: center;
+      padding: 2.6mm 2mm;
+      border-radius: 2mm;
+    }
+    .b-cust .how {
+      margin-top: 5mm;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .how p {
+      margin: 0 0 2mm;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .b-cust .how ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: s;
+    }
+    .b-cust .how li {
+      counter-increment: s;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 2mm;
+      display: flex;
+      gap: 2.5mm;
+      align-items: baseline;
+    }
+    .b-cust .how li::before {
+      content: "0" counter(s);
+      color: var(--green);
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .b-cust .foot {
+      margin-top: auto;
+      background: var(--gold);
+      color: var(--ink);
+      margin: 5mm -5.5mm -0;
+      padding: 4.5mm 5.5mm 5mm;
+      position: relative;
+      z-index: 1;
+    }
+    .b-cust .foot strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.15;
+    }
+    .b-cust .foot span {
+      display: block;
+      margin-top: 1mm;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* =========================================================
+       C — PRAÇA (meio a meio / bloco diagonal)
+       ========================================================= */
+    .c-merch {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: white;
+      color: var(--ink);
+    }
+    .c-merch .upper {
+      background: var(--green);
+      color: white;
+      padding: 7mm 7mm 14mm;
+      position: relative;
+      clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);
+    }
+    .c-merch .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+    }
+    .c-merch .tag {
+      position: absolute;
+      top: 7mm;
+      right: 7mm;
+      background: var(--ink);
+      color: var(--gold);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 8px;
+      border-radius: 999px;
+    }
+    .c-merch h1 {
+      margin: 8mm 0 0;
+      font-size: 32px;
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+      max-width: 95%;
+    }
+    .c-merch .upper p {
+      margin: 3mm 0 0;
+      font-size: 13.5px;
+      line-height: 1.3;
+      color: #e8fff4;
+      max-width: 92%;
+    }
+    .c-merch .lower {
+      padding: 0 7mm 0;
+      margin-top: -9mm;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 2;
+    }
+    .c-merch .offer {
+      background: var(--gold);
+      color: var(--ink);
+      border-radius: 3.5mm;
+      padding: 3.5mm 4mm;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(15,33,25,0.16);
+    }
+    .c-merch .offer b {
+      display: block;
+      font-size: 18px;
+      line-height: 1.05;
+    }
+    .c-merch .offer span {
+      display: block;
+      margin-top: 1mm;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .c-merch ul {
+      list-style: none;
+      margin: 3.5mm 0 0;
+      padding: 0;
+    }
+    .c-merch li {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 1.7mm;
+      padding-left: 4.5mm;
+      position: relative;
+    }
+    .c-merch li::before {
+      content: "▸";
+      position: absolute;
+      left: 0;
+      color: var(--green);
+    }
+    .c-merch .foot {
+      margin-top: auto;
+      border-top: 2px solid #dce8e1;
+      padding: 3mm 0 5mm;
+    }
+    .c-merch .plans {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 800;
+      margin-bottom: 2.5mm;
+    }
+    .c-merch .plans span {
+      display: block;
+      color: var(--green-dark);
+      font-weight: 700;
+    }
+    .c-merch .phone {
+      border: 1.5px dashed #9bb5a8;
+      border-radius: 2.5mm;
+      min-height: 9mm;
+      display: flex;
+      align-items: center;
+      padding: 0 3mm;
+      font-size: 14px;
+      color: #6d8278;
+    }
+    .c-merch .foot strong {
+      display: block;
+      font-size: 12.5px;
+      margin-bottom: 1.5mm;
+    }
+
+    .c-cust {
+      background: var(--ink);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      padding: 7mm 7mm 0;
+    }
+    .c-cust .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+    }
+    .c-cust .stamp {
+      margin-top: 8mm;
+      width: 28mm;
+      height: 28mm;
+      border-radius: 50%;
+      background: var(--gold);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+      transform: rotate(-8deg);
+      box-shadow: 0 0 0 3px rgba(255,184,0,0.25);
+    }
+    .c-cust h1 {
+      margin: 5mm 0 0;
+      font-size: 34px;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      font-weight: 800;
+    }
+    .c-cust .sub {
+      margin: 3mm 0 0;
+      font-size: 14px;
+      line-height: 1.35;
+      color: #d5ebe1;
+    }
+    .c-cust .rail {
+      margin-top: 5mm;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2mm;
+    }
+    .c-cust .rail span {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 1.6mm 3mm;
+      border-radius: 999px;
+    }
+    .c-cust .path {
+      margin-top: 5mm;
+      display: grid;
+      gap: 0;
+    }
+    .c-cust .path div {
+      display: flex;
+      gap: 3mm;
+      align-items: flex-start;
+      padding: 2.5mm 0;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .c-cust .path b {
+      color: var(--gold);
+      font-size: 13px;
+      min-width: 5mm;
+    }
+    .c-cust .foot {
+      margin-top: auto;
+      margin-left: -7mm;
+      margin-right: -7mm;
+      background: var(--green);
+      padding: 5.5mm 7mm 6.5mm;
+    }
+    .c-cust .foot strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.15;
+    }
+    .c-cust .foot span {
+      display: block;
+      margin-top: 1.5mm;
+      font-size: 12.5px;
+      color: #e7fff4;
+    }
+
+    @media print {
+      body { background: white; }
+      .intro, .group-title, .label { display: none !important; }
+      .gallery { padding: 0; max-width: none; }
+      .row { display: block; }
+      .option { break-inside: avoid; }
+      .sheet {
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+        margin: 0 auto;
+      }
+      @page { size: A5 portrait; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="intro">
+    <h1>Três estilos novos de panfleto</h1>
+    <p>
+      Mesmo conteúdo (teste de 7 dias + planos / pedido em casa), layouts bem diferentes.
+      Escolha um para comerciante e um para cliente — ou misture.
+      Para imprimir: Ctrl+P, A5, margens nenhuma, gráficos de fundo.
+      Quer cena desenhada? Abra <a href="ilustrativos.html" style="color:#007a4d;font-weight:700">ilustrativos.html</a> (D Entrega · E Celular · F Mapa).
+    </p>
+  </div>
+
+  <div class="gallery">
+    <div class="group-title">Opção A — Impacto · número 7 em destaque</div>
+    <div class="row">
+      <div class="option">
+        <div class="label">A · Comerciante</div>
+        <article class="sheet a-merch" aria-label="Opção A comerciante">
+          <div class="hero">
+            <div class="hero-top">
+              <div class="brand-row brand-word">
+                <img class="logo" src="pecaja-logo.png" alt="Peça Já" />
+                PEÇA <span class="ja">JÁ</span>
+              </div>
+              <div class="tag">Comerciante</div>
+            </div>
+            <div class="seven" aria-hidden="true">7</div>
+            <h1>Sua loja no app da cidade. <em>Dias grátis.</em></h1>
+            <p>Teste de verdade: cadastre, receba pedido e só depois escolha o plano.</p>
+          </div>
+          <div class="body">
+            <h2>O que a loja ganha</h2>
+            <div class="grid">
+              <div>No mapa com cardápio e fotos</div>
+              <div>Pedidos ilimitados no painel</div>
+              <div>Aviso na hora do pedido novo</div>
+              <div>Preço cadastrado intacto</div>
+              <div>Repasse Pix após entrega</div>
+              <div>Frete urbano na cidade</div>
+              <div>Chat com o cliente</div>
+              <div>Cupons e selos nos planos altos</div>
+            </div>
+          </div>
+          <div class="foot">
+            <div class="plans">
+              <div>Já na Rua<span>R$ 200/mês</span></div>
+              <div>Já em Alta<span>R$ 250/mês</span></div>
+              <div>Já no Topo<span>R$ 300/mês</span></div>
+            </div>
+            <div class="cta">
+              <strong>Chame e peça o teste de 7 dias</strong>
+              <div class="phone">WhatsApp (__) _____-____</div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="option">
+        <div class="label">A · Cliente</div>
+        <article class="sheet a-cust" aria-label="Opção A cliente">
+          <div class="band">
+            <div class="band-top">
+              <div class="brand-row brand-word">
+                <img class="logo" src="pecaja-logo.png" alt="Peça Já" />
+                PEÇA <span class="ja">JÁ</span>
+              </div>
+              <div class="tag">Cliente</div>
+            </div>
+            <h1>O comércio da cidade, na sua porta.</h1>
+            <p>Escolha a loja, faça o pedido e acompanhe até a entrega.</p>
+          </div>
+          <div class="mid">
+            <div class="chips">
+              <span>Restaurante</span><span>Mercado</span><span>Farmácia</span>
+              <span>Padaria</span><span>Bebidas</span><span>Conveniência</span>
+            </div>
+            <div class="steps">
+              <div><b>1</b>Baixe o Peça Já no celular</div>
+              <div><b>2</b>Escolha a loja e monte o pedido</div>
+              <div><b>3</b>Acompanhe a entrega até a porta</div>
+            </div>
+          </div>
+          <div class="foot">
+            <strong>Procure “Peça Já” na loja de aplicativos.</strong>
+            <span>Peça do comércio local. Receba em casa.</span>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="group-title">Opção B — Vitrine · limpa, quase revista</div>
+    <div class="row">
+      <div class="option">
+        <div class="label">B · Comerciante</div>
+        <article class="sheet b-merch" aria-label="Opção B comerciante">
+          <div class="topbar">
+            <div class="brand-row brand-word">
+              <img class="logo" src="pecaja-logo.png" alt="Peça Já" />
+              PEÇA <span class="ja">JÁ</span>
+            </div>
+            <div class="tag">Parceiro</div>
+          </div>
+          <div class="main">
+            <div class="badge">Validação gratuita</div>
+            <h1>Coloque a loja no app. 7 dias pra sentir o movimento.</h1>
+            <p class="lead">Sem plano no começo. Você testa, vê se os pedidos compensam e só então escolhe.</p>
+            <div class="trial">
+              <div class="n">7<small>dias</small></div>
+              <p>Cardápio, painel, pedidos reais e repasse Pix — tudo liberado no teste.</p>
+            </div>
+            <ul>
+              <li>Loja no mapa com fotos</li>
+              <li>Pedidos ilimitados</li>
+              <li>Aviso de pedido novo</li>
+              <li>Preço cadastrado intacto</li>
+              <li>Repasse por Pix</li>
+              <li>Frete urbano Peça Já</li>
+              <li>Chat com o cliente</li>
+              <li>Cupons e selos nos planos altos</li>
+            </ul>
+            <div class="bottom">
+              <div class="plans">
+                <div>Já na Rua<span>R$ 200/mês</span></div>
+                <div>Já em Alta<span>R$ 250/mês</span></div>
+                <div>Já no Topo<span>R$ 300/mês</span></div>
+              </div>
+              <strong>Chame e peça o teste de 7 dias</strong>
+              <div class="phone">WhatsApp (__) _____-____</div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="option">
+        <div class="label">B · Cliente</div>
+        <article class="sheet b-cust" aria-label="Opção B cliente">
+          <div class="frame">
+            <div class="brand-row brand-word customer-word">
+              <img class="logo logo-lg" src="pecaja-logo.png" alt="Peça Já" />
+              PEÇA <span class="ja">JÁ</span>
+            </div>
+            <div class="kicker">Para quem pede em casa</div>
+            <h1>Do comércio da rua até a sua porta.</h1>
+            <p class="sub">Sem fila. Sem deslocamento. Pedido no celular e entrega acompanhada.</p>
+            <div class="cats">
+              <span>Restaurante</span>
+              <span>Mercado</span>
+              <span>Farmácia</span>
+              <span>Padaria</span>
+              <span>Bebidas</span>
+              <span>Conveniência</span>
+            </div>
+            <div class="how">
+              <p>Como pedir</p>
+              <ol>
+                <li>Baixe o Peça Já</li>
+                <li>Escolha a loja e monte o pedido</li>
+                <li>Acompanhe até a porta</li>
+              </ol>
+            </div>
+            <div class="foot">
+              <strong>Procure “Peça Já” na loja de aplicativos.</strong>
+              <span>Comércio local · entrega em casa</span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="group-title">Opção C — Praça · bloco verde + faixa ouro</div>
+    <div class="row">
+      <div class="option">
+        <div class="label">C · Comerciante</div>
+        <article class="sheet c-merch" aria-label="Opção C comerciante">
+          <div class="upper">
+            <div class="brand-row brand-word">
+              <img class="logo" src="pecaja-logo.png" alt="Peça Já" />
+              PEÇA <span class="ja">JÁ</span>
+            </div>
+            <div class="tag">Loja</div>
+            <h1>Sua marca no celular de quem mora perto.</h1>
+            <p>O Peça Já coloca o comércio da cidade no app — e o pedido chega no painel.</p>
+          </div>
+          <div class="lower">
+            <div class="offer">
+              <b>7 dias grátis para validar</b>
+              <span>Cadastre o cardápio, receba pedido e só depois escolha o plano.</span>
+            </div>
+            <ul>
+              <li>Mapa + cardápio com fotos</li>
+              <li>Pedidos ilimitados e aviso na hora</li>
+              <li>Você recebe o preço que cadastrou</li>
+              <li>Repasse Pix após a entrega</li>
+              <li>Frete urbano e chat com o cliente</li>
+              <li>Cupons e selos nos planos Já em Alta e Já no Topo</li>
+            </ul>
+            <div class="foot">
+              <div class="plans">
+                <div>Já na Rua<span>R$ 200</span></div>
+                <div>Já em Alta<span>R$ 250</span></div>
+                <div>Já no Topo<span>R$ 300</span></div>
+              </div>
+              <strong>Chame e peça o teste de 7 dias</strong>
+              <div class="phone">WhatsApp (__) _____-____</div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="option">
+        <div class="label">C · Cliente</div>
+        <article class="sheet c-cust" aria-label="Opção C cliente">
+          <div class="brand-row brand-word">
+            <img class="logo logo-lg" src="pecaja-logo.png" alt="Peça Já" />
+            PEÇA <span class="ja">JÁ</span>
+          </div>
+          <div class="stamp">PEÇA<br>AGORA</div>
+          <h1>O que a cidade vende, na sua porta.</h1>
+          <p class="sub">Restaurante, mercado, farmácia e mais — pedido no app, entrega acompanhada.</p>
+          <div class="rail">
+            <span>Restaurante</span><span>Mercado</span><span>Farmácia</span>
+            <span>Padaria</span><span>Bebidas</span><span>Conveniência</span>
+          </div>
+          <div class="path">
+            <div><b>01</b>Baixe o Peça Já no celular</div>
+            <div><b>02</b>Escolha a loja e monte o pedido</div>
+            <div><b>03</b>Acompanhe a entrega até a porta</div>
+          </div>
+          <div class="foot">
+            <strong>Procure “Peça Já” na loja de aplicativos.</strong>
+            <span>Peça do comércio local. Receba em casa.</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -11,6 +11,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams, Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { BusinessCard } from '@/components/BusinessCard';
 import {
   formatPrice,
@@ -26,6 +28,7 @@ import { customerUnitPrice } from '@/constants/pricing';
 import { Business } from '@/types';
 import { useDemoLocation } from '@/hooks/useDemoLocation';
 import { getUserPlaceDetails } from '@/services/permissions';
+import { getSimulatedCityLabel } from '@/utils/demoLocation';
 import { businessPassesHomeFilters, defaultHomeFilters } from '@/utils/catalogFilters';
 
 const RECENT_KEY = '@pecaja_recent_searches';
@@ -33,6 +36,8 @@ const DEFAULT_RECENTS = ['Pizza', 'Farmácia', 'Mercado', 'Cerveja', 'Pão', 'Pu
 const MAX_RECENTS = 8;
 
 export default function SearchScreen() {
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
   const params = useLocalSearchParams<{ q?: string }>();
   const [catalog, setCatalog] = useState<Business[]>(() => getAllBusinesses());
   const { version: demoVersion } = useDemoLocation();
@@ -40,7 +45,8 @@ export default function SearchScreen() {
   const refreshCatalog = useCallback(async () => {
     await hydratePartnerShops();
     const place = await getUserPlaceDetails().catch(() => null);
-    const base = getAllBusinesses();
+    const label = getSimulatedCityLabel(place?.city);
+    const base = getAllBusinesses(label === 'sua cidade' ? null : label);
     setCatalog(applyProximityToBusinesses(base, place?.latitude, place?.longitude));
   }, []);
 
@@ -198,7 +204,7 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <View style={styles.tabHeader}>
+      <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
         <Text style={styles.tabTitle}>Buscar</Text>
         <Text style={styles.tabSub}>Pratos, mercados e farmácias perto de você</Text>
       </View>
@@ -480,7 +486,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   tabHeader: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
     paddingBottom: 4,
   },
   tabTitle: {

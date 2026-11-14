@@ -23,7 +23,9 @@ import { OrderStatusTracker } from '@/components/OrderStatusTracker';
 import { Button } from '@/components/Button';
 import { MobileShell } from '@/components/MobileShell';
 import { CustomerLiveMap } from '@/components/CustomerLiveMap';
-import { isCustomerLiveMapOrder } from '@/utils/customerLiveMap';
+import { StoreDeliveryNotice } from '@/components/StoreDeliveryNotice';
+import { isCustomerLiveMapOrder, isStoreOwnDelivery } from '@/utils/customerLiveMap';
+import { CashHandoffCard } from '@/components/CashHandoffCard';
 import { theme, orderStatusConfig } from '@/constants/theme';
 import { formatPrice, getBusinessById } from '@/data/businesses';
 import { getShopByBusinessId } from '@/utils/merchantShop';
@@ -34,7 +36,8 @@ import { formatOrderDateTime } from '@/utils/datetime';
 import { CartItem } from '@/types';
 import { CancelReasonModal } from '@/components/CancelReasonModal';
 import { OrderPersonCard } from '@/components/OrderPersonCard';
-import { isWithinOrderCancelWindow } from '@/utils/orderCancelWindow';
+import { customerDelayCancel, orderCancelBlockReason } from '@/utils/orderCancelWindow';
+import { customerCancelAlertMessage, customerRefundBanner } from '@/utils/orderRefund';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -61,13 +64,8 @@ export default function OrderTrackingScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const alreadyReviewed = order ? hasReviewedOrder(order.id) : false;
-  const canCancel =
-    order != null &&
-    !order.pickupVerifiedAt &&
-    (order.status === 'pendente' ||
-      order.status === 'confirmado' ||
-      order.status === 'preparando') &&
-    isWithinOrderCancelWindow(order.createdAt, nowMs);
+  const canCancel = order != null && !orderCancelBlockReason(order, 'customer', nowMs);
+  const delayCancel = order ? customerDelayCancel(order, nowMs) : null;
   const openIssues = order ? pendingLineIssues(order) : [];
 
   useEffect(() => {
@@ -151,10 +149,13 @@ export default function OrderTrackingScreen() {
             cancelledBy: 'customer',
             cancelledAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            refundStatus: result.refundStatus,
+            refundMessage: result.refundMessage,
+            refundAt: new Date().toISOString(),
           }
         : prev
     );
-    Alert.alert('Pedido cancelado', 'Seu pedido foi cancelado com sucesso.');
+    Alert.alert('Pedido cancelado', customerCancelAlertMessage(result.refundStatus || 'not_applicable'));
   }
 
   function handleReorder() {
@@ -232,7 +233,76 @@ export default function OrderTrackingScreen() {
                 Pedido cancelado
               </Text>
               <Text style={styles.statusSub}>Este pedido não será entregue.</Text>
+              {!!order.cancelReason && (
+                <Text style={styles.statusSub}>Motivo: {order.cancelReason}</Text>
+              )}
             </View>
+          </View>
+        )}
+
+        {(() => {
+          const refundBanner = customerRefundBanner(order);
+          if (!refundBanner) return null;
+          const bg =
+            refundBanner.tone === 'ok'
+              ? '#ECFDF5'
+              : refundBanner.tone === 'wait'
+                ? '#FFFBEB'
+                : refundBanner.tone === 'warn'
+                  ? theme.colors.errorLight
+                  : theme.colors.borderLight;
+          const color =
+            refundBanner.tone === 'ok'
+              ? '#065F46'
+              : refundBanner.tone === 'wait'
+                ? '#92400E'
+                : refundBanner.tone === 'warn'
+                  ? theme.colors.error
+                  : theme.colors.textSecondary;
+          const icon =
+            refundBanner.tone === 'ok'
+              ? 'checkmark-circle'
+              : refundBanner.tone === 'wait'
+                ? 'time-outline'
+                : refundBanner.tone === 'warn'
+                  ? 'alert-circle'
+                  : 'information-circle-outline';
+          return (
+            <View style={[styles.refundBanner, { backgroundColor: bg }]}>
+              <Ionicons name={icon} size={22} color={color} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.refundTitle, { color }]}>{refundBanner.title}</Text>
+                <Text style={styles.refundText}>{refundBanner.text}</Text>
+                {(refundBanner.tone === 'wait' || refundBanner.tone === 'warn') && (
+                  <TouchableOpacity
+                    onPress={() => router.push('/support' as any)}
+                    style={styles.refundSupportBtn}
+                    accessibilityRole="button"
+                  >
+                    <Text style={[styles.refundSupportText, { color }]}>Abrir suporte</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })()}
+
+        <CashHandoffCard order={order} viewer="customer" />
+
+        {order.status === 'entregue' && (
+          <View style={styles.deliveredBanner}>
+            <Ionicons name="checkmark-circle" size={32} color={theme.colors.primary} />
+            <Text style={styles.deliveredTitle}>Pedido entregue!</Text>
+            <Text style={styles.deliveredSub}>
+              {alreadyReviewed
+                ? 'Obrigado pela sua avaliação'
+                : 'O entregador confirmou o código. Avalie o pedido.'}
+            </Text>
+            <Button
+              title="Pedir novamente"
+              onPress={handleReorder}
+              style={{ marginTop: theme.spacing.md, alignSelf: 'stretch' }}
+            />
           </View>
         )}
 
@@ -278,6 +348,12 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
+        {isCustomerLiveMapOrder(order) ? (
+          <CustomerLiveMap order={order} viewer="customer" />
+        ) : isStoreOwnDelivery(order) ? (
+          <StoreDeliveryNotice businessName={order.businessName} />
+        ) : null}
+
         {isActive && order.paymentConfirmed && (
           <View style={styles.infoCard}>
             <Text style={styles.cardTitle}>Entrega</Text>
@@ -305,11 +381,10 @@ export default function OrderTrackingScreen() {
           </View>
         )}
 
-        {isCustomerLiveMapOrder(order) && (
-            <CustomerLiveMap order={order} viewer="customer" />
-          )}
-
-        {order.paymentConfirmed && order.status !== 'cancelado' && !!order.deliveryCode && (
+        {order.paymentConfirmed &&
+          order.status !== 'cancelado' &&
+          order.status !== 'entregue' &&
+          !!order.deliveryCode && (
           <View style={styles.codeHero}>
             <View style={styles.codeHeroTop}>
               <Ionicons name="shield-checkmark" size={22} color={theme.colors.primary} />
@@ -434,23 +509,6 @@ export default function OrderTrackingScreen() {
                 <Text style={styles.chatBtnText}>Chat</Text>
               </View>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {order.status === 'entregue' && (
-          <View style={styles.deliveredBanner}>
-            <Ionicons name="checkmark-circle" size={32} color={theme.colors.primary} />
-            <Text style={styles.deliveredTitle}>Pedido entregue!</Text>
-            <Text style={styles.deliveredSub}>
-              {alreadyReviewed
-                ? 'Obrigado pela sua avaliação'
-                : 'Esperamos que tenha gostado — avalie o pedido'}
-            </Text>
-            <Button
-              title="Pedir novamente"
-              onPress={handleReorder}
-              style={{ marginTop: theme.spacing.md, alignSelf: 'stretch' }}
-            />
           </View>
         )}
 
@@ -673,7 +731,7 @@ export default function OrderTrackingScreen() {
 
         {canCancel && (
           <Button
-            title="Cancelar pedido"
+            title={delayCancel ? 'Cancelar e pedir reembolso' : 'Cancelar pedido'}
             variant="outline"
             onPress={handleCancel}
             style={{ marginTop: theme.spacing.md, borderColor: theme.colors.error }}
@@ -944,6 +1002,33 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
     marginTop: 2,
+  },
+  refundBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    marginBottom: theme.spacing.md,
+  },
+  refundTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+  },
+  refundText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  refundSupportBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  refundSupportText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.bold,
+    textDecorationLine: 'underline',
   },
   deliveredBanner: {
     alignItems: 'center',

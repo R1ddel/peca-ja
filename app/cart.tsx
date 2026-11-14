@@ -27,11 +27,10 @@ import {
 } from '@/utils/rewards';
 import {
   calculateFreeRouteDistance,
-  merchantCoordsNearCustomer,
   resolveDeliveryPriceFromDistance,
   gpsFreightAdjustMessage,
 } from '@/services/payment';
-import { parseDistanceKm } from '@/components/HomeFilters';
+import { resolveMerchantPinForBusinessId } from '@/utils/merchantPin';
 import { getClosedBannerText } from '@/utils/businessHours';
 
 export default function CartScreen() {
@@ -71,9 +70,7 @@ export default function CartScreen() {
         });
         const { latitude, longitude } = currentLocation.coords;
 
-        const business = items.length > 0 ? getBusinessById(items[0].businessId) : null;
-        const approxKm = business ? parseDistanceKm(business.distance) : 1.5;
-        const merchant = merchantCoordsNearCustomer(latitude, longitude, approxKm || 1.5);
+        const merchant = await resolveMerchantPinForBusinessId(items[0]?.businessId || '');
 
         const distanceInMeters = await calculateFreeRouteDistance(
           merchant.latitude,
@@ -215,6 +212,20 @@ export default function CartScreen() {
               </View>
             );
           })}
+
+          <TouchableOpacity
+            style={styles.addMoreBtn}
+            onPress={() =>
+              router.push({
+                pathname: '/business/[id]' as any,
+                params: { id: items[0].businessId },
+              })
+            }
+            accessibilityLabel="Adicionar novo item desta loja"
+          >
+            <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
+            <Text style={styles.addMoreText}>Adicionar novo item</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.clearBtn} onPress={clearCart}>
             <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
@@ -386,6 +397,23 @@ const styles = StyleSheet.create({
   qtyText: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.bold, minWidth: 20, textAlign: 'center' },
   itemRight: { alignItems: 'flex-end', gap: theme.spacing.sm },
   itemTotal: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.bold, color: theme.colors.primary },
+  addMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+    paddingVertical: 14,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight,
+  },
+  addMoreText: {
+    color: theme.colors.primaryDark,
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+  },
   clearBtn: {
     flexDirection: 'row',
     alignItems: 'center',

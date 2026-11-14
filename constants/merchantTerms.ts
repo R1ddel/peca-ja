@@ -3,7 +3,7 @@
  * Texto-base operacional. Não substitui parecer de advogado inscrito na OAB
  * sobre o caso concreto da pessoa jurídica titular da marca.
  */
-export const MERCHANT_TERMS_VERSION = '2026.08.1';
+export const MERCHANT_TERMS_VERSION = '2026.10.2';
 
 export const MERCHANT_TERMS_TITLE =
   'Termo de Compromisso, Responsabilidade e Adesão ao Peça Já — Comerciante';
@@ -70,6 +70,8 @@ Plano contratado: ${opts.planLabel} — ${opts.planPrice}/mês.
 
 3.5. A Plataforma NÃO garante que todo pedido terá entregador disponível, nem prazo de rua. Indisponibilidade de motoboy, trânsito, chuva e caso fortuito da via NÃO convertem a Plataforma em transportadora nem em empregadora.
 
+3.6. PRAZO DE PREPARO E TOLERÂNCIA. O prazo para o pedido ficar pronto é o que o Comerciante informou. Depois desse prazo, o consumidor tem 35 minutos de tolerância. Se o pedido não estiver pronto, o consumidor pode cancelar e receber o reembolso integral, ou continuar esperando. O cancelamento não é automático. O Comerciante é avisado do reembolso e do motivo, e o pedido fica cancelado. Depois da retirada, a tolerância da entrega é de 20 minutos após o prazo estabelecido para o entregador.
+
 4. RELAÇÃO COM ENTREGADORES E CONSUMIDORES
 
 4.1. O entregador parceiro NÃO é empregado do Comerciante nem do Peça Já em razão deste Termo. O Comerciante NÃO dará ordens de emprego ao motoboy (escala, punição trabalhista, exclusividade). Poderá apenas tratar da retirada daquele pedido (embalagem, conferência, código).
@@ -82,7 +84,11 @@ Plano contratado: ${opts.planLabel} — ${opts.planPrice}/mês.
 
 5.1. O Comerciante adere ao plano ${opts.planLabel} por ${opts.planPrice}/mês, sujeito à confirmação de pagamento.
 
-5.2. Valores de pedidos pagos pelo consumidor (Pix, cartão etc.) seguem split/repasse das regras do Peça Já e do meio de pagamento, com taxas, chargebacks, estornos e retenções legais.
+5.2. Valores de pedidos pagos pelo consumidor (Pix, cartão etc.) seguem o repasse do meio de pagamento, com chargebacks, estornos e retenções legais. A taxa do Peça Já no pedido é de R$ 2,00 (dois reais) por unidade de item: soma-se ao preço que o Comerciante cadastrou e é paga pelo consumidor. Em Pix ou cartão, essa taxa não reduz o preço cadastrado da loja.
+
+5.2.1. Cupom oferecido pela loja e vale-refeição aceito pela loja são descontados do saldo do Comerciante. Não abatem a taxa do Peça Já.
+
+5.2.2. No pagamento em dinheiro, quando a entrega é da própria equipe da loja, o Comerciante fica com o dinheiro vivo. A taxa do Peça Já daquele pedido vira débito no caixa Pix da loja. No próximo pedido pago com Pix ou cartão, esse débito é abatido da parte da loja (não do frete). Com motoboy do Peça Já não se aceita dinheiro.
 
 5.3. Chargebacks e cancelamentos por falha do Comerciante (não entregue, divergência grave, má-fé) podem ser debitados dos repasses, com cobrança judicial se preciso.
 

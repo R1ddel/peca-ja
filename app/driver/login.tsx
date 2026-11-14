@@ -92,7 +92,7 @@ export default function DriverLoginScreen() {
       });
 
       if (rememberLogin) {
-        await setRememberedDriverLogin(result.application.email, password);
+        await setRememberedDriverLogin(result.application.email);
       } else {
         await clearRememberedDriverLogin();
       }
@@ -195,9 +195,9 @@ export default function DriverLoginScreen() {
             onPress={() => setRememberLogin((v) => !v)}
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.rememberTitle}>Salvar login neste celular</Text>
+              <Text style={styles.rememberTitle}>Lembrar meu e-mail neste celular</Text>
               <Text style={styles.rememberHint}>
-                Preenche e-mail e senha na próxima vez que abrir o painel
+                A senha não fica salva. Na próxima vez só o e-mail volta preenchido.
               </Text>
             </View>
             <Switch

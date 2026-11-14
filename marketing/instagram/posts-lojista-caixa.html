@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Peça Já — cartazes lojista</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@500;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root { --green: #00a86b; --forest: #1e3a2f; --gold: #ffb800; --cream: #f4efe4; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #cfd9d3; display: flex; flex-direction: column; align-items: center;
+    gap: 48px; padding: 48px 0 96px; font-family: Poppins, sans-serif;
+  }
+  body.export { background: transparent; padding: 0; gap: 0; }
+  .label { font: 600 18px Poppins, sans-serif; color: #2a3d33; width: 1080px; }
+  .art { position: relative; overflow: hidden; width: 1080px; height: 1350px; flex: none; background: var(--cream); }
+  .bg { position: absolute; inset: 0; background-size: cover; background-repeat: no-repeat; }
+  .anton { font-family: Anton, Impact, sans-serif; letter-spacing: .01em; line-height: .86; text-transform: uppercase; }
+  .osw { font-family: Oswald, sans-serif; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+  .bar {
+    position: absolute; left: 40px; right: 40px; bottom: 40px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: #fff; color: var(--forest); border-radius: 999px; padding: 16px 16px 16px 28px;
+    font: 700 24px/1.15 Poppins, sans-serif; box-shadow: 0 16px 40px rgba(0,0,0,.28);
+  }
+  .bar b {
+    background: var(--forest); color: #fff; border-radius: 999px; padding: 16px 22px;
+    font: 800 20px/1 Poppins, sans-serif; white-space: nowrap;
+  }
+  .bar.gold { background: var(--gold); }
+  .bar.gold b { background: var(--forest); color: var(--gold); }
+</style>
+</head>
+<body>
+
+<div class="label">01 · 25 = 25</div>
+<div class="art" id="caixa-01" data-n="1">
+  <div class="bg" style="background-image:url('lojista-pint/base-burger.jpg');background-position:center 62%"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:560px;background:linear-gradient(180deg,#f6f0e6 0%,#f6f0e6 68%,rgba(246,240,230,0) 100%)"></div>
+  <div style="position:absolute;left:48px;right:48px;top:56px;text-align:center;color:var(--forest)">
+    <div class="osw" style="font-size:28px">Lojista de Mucugê</div>
+    <div class="anton" style="margin-top:22px;font-size:112px">R$ 25 = R$ 25</div>
+    <div class="osw" style="margin-top:12px;font-size:30px;letter-spacing:.06em;color:var(--green)">o preço do cardápio é seu</div>
+  </div>
+  <div class="bar">
+    <span>R$ 2 por item vai no cliente</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">02 · Já pagou</div>
+<div class="art" id="caixa-02" data-n="2" style="background:#0c0c0c">
+  <div class="bg" style="background-image:url('lojista-pint/base-prato.jpg');background-position:center 78%"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:620px;background:linear-gradient(180deg,rgba(0,0,0,.82) 0%,rgba(0,0,0,.55) 58%,rgba(0,0,0,0) 100%)"></div>
+  <div style="position:absolute;left:48px;right:48px;top:78px;text-align:center;color:#fff">
+    <div class="osw" style="font-size:26px;color:var(--gold)">Mucugê</div>
+    <div style="position:relative;display:inline-block;margin-top:18px">
+      <div class="anton" style="font-size:132px;color:rgba(255,255,255,.45)">Já saiu?</div>
+      <div style="position:absolute;left:-8px;right:-8px;top:54%;height:14px;background:var(--gold);transform:rotate(-6deg)"></div>
+    </div>
+    <div class="anton" style="margin-top:6px;font-size:148px;color:var(--gold)">Já pagou.</div>
+    <div class="osw" style="margin-top:16px;font-size:28px;letter-spacing:.08em;color:#fff">no Pix, antes de preparar</div>
+  </div>
+  <div class="bar gold">
+    <span>A moto retira com código</span>
+    <b>Chama no direct</b>
+  </div>
+</div>
+
+<div class="label">03 · Entra no mapa</div>
+<div class="art" id="caixa-03" data-n="3">
+  <div class="bg" style="background-image:url('lojista-pint/base-explodido.jpg');background-size:1080px auto;background-position:center 210px;background-color:#f7f3ea"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:250px;background:linear-gradient(180deg,#f7f3ea 0%,#f7f3ea 78%,rgba(247,243,234,0) 100%)"></div>
+  <div style="position:absolute;left:48px;right:48px;top:36px;text-align:center;color:var(--forest)">
+    <div class="osw" style="font-size:24px;color:var(--green)">Mucugê</div>
+    <div class="anton" style="margin-top:8px;font-size:96px">Entra no</div>
+    <div class="anton" style="font-size:108px;color:var(--green)">mapa.</div>
+    <div class="osw" style="margin-top:12px;font-size:22px;letter-spacing:.08em;color:var(--forest)">restaurante · mercado · farmácia · padaria · bebidas</div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:0;height:130px;background:linear-gradient(180deg,rgba(247,243,234,0) 0%,#f7f3ea 42%)"></div>
+  <div class="bar" style="background:var(--forest);color:#fff">
+    <span>Sai no app e na divulgação</span>
+    <b style="background:var(--gold);color:var(--forest)">Chama no direct</b>
+  </div>
+</div>
+
+<script>
+  const n = (location.hash || "").replace("#", "");
+  if (n) {
+    document.body.classList.add("export");
+    document.querySelectorAll(".label").forEach((el) => el.remove());
+    document.querySelectorAll(".art").forEach((el) => {
+      if (el.dataset.n !== n) el.remove();
+    });
+  }
+</script>
+</body>
+</html>

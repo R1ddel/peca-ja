@@ -12,8 +12,7 @@ import { BackHeader } from '@/components/BackHeader';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
 import { useOrders } from '@/context/OrdersContext';
-import { resolveMerchantApplication } from '@/utils/partners';
-import { getShopByApplicationId } from '@/utils/merchantShop';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import { buildMerchantInsights } from '@/utils/merchantInsights';
 import { formatPrice } from '@/data/businesses';
 import { theme } from '@/constants/theme';
@@ -26,9 +25,7 @@ export default function MerchantInsightsScreen() {
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const app = await resolveMerchantApplication(user?.email);
-        if (!app) return;
-        const shop = await getShopByApplicationId(app.id);
+        const { shop } = await resolveOperatorMerchantContext(user?.email);
         setBusinessId(shop?.businessId ?? null);
       })();
     }, [user?.email])

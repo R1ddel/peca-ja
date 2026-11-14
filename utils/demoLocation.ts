@@ -41,6 +41,20 @@ let version = 0;
 type Listener = (next: DemoLocation | null) => void;
 const listeners = new Set<Listener>();
 
+/**
+ * Link público (trycloudflare e qualquer host que não seja esta máquina).
+ * No Metro de desenvolvimento __DEV__ continua true, então o botão de simular
+ * cidade não pode depender só disso.
+ */
+export function isSharedPublicWeb(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
+  if (host.endsWith('.local')) return false;
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host)) return false;
+  return true;
+}
+
 /** Demo de cidade só em desenvolvimento. */
 export function isDemoCityAllowed(): boolean {
   if (typeof __DEV__ !== 'undefined' && __DEV__) return true;

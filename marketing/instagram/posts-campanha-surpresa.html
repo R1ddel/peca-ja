@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Peça Já — campanhas surpresa</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=IBM+Plex+Mono:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Playfair+Display:ital,wght@1,700;1,900&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #111; display: flex; flex-direction: column; align-items: center;
+    gap: 56px; padding: 56px 0 120px; font-family: "Space Grotesk", sans-serif;
+  }
+  body.export { background: transparent; padding: 0; gap: 0; }
+  .label { color: #8a8; font: 600 16px "IBM Plex Mono", monospace; width: 1080px; letter-spacing: .04em; }
+  .art { width: 1080px; height: 1350px; position: relative; overflow: hidden; flex: none; }
+
+  /* —— 1 ZAP —— */
+  .zap { background: #0b141a; }
+  .zap-top {
+    height: 110px; background: #1f2c34; display: flex; align-items: center; gap: 18px;
+    padding: 0 36px; color: #e9edef;
+  }
+  .zap-ava {
+    width: 72px; height: 72px; border-radius: 50%; background: #00a86b;
+    display: grid; place-items: center; font: 800 28px "Space Grotesk"; color: #0b141a;
+  }
+  .zap-name { font: 700 30px "Space Grotesk"; }
+  .zap-sub { font: 500 18px "IBM Plex Mono"; color: #8696a0; margin-top: 4px; }
+  .zap-thread { padding: 40px 36px; display: flex; flex-direction: column; gap: 18px; }
+  .bubble {
+    max-width: 78%; padding: 22px 26px; border-radius: 18px;
+    font: 600 28px/1.35 "Space Grotesk"; color: #e9edef; position: relative;
+  }
+  .bubble.in { background: #202c33; align-self: flex-start; border-top-left-radius: 4px; }
+  .bubble.out { background: #005c4b; align-self: flex-end; border-top-right-radius: 4px; }
+  .bubble .t { font: 500 16px "IBM Plex Mono"; color: #8696a0; margin-top: 10px; text-align: right; }
+  .bubble.dead {
+    background: #2a1a1a; border: 1.5px dashed #ff5c5c; color: #ff8a8a;
+    align-self: flex-end; border-top-right-radius: 4px;
+  }
+  .zap-twist {
+    position: absolute; left: 36px; right: 36px; bottom: 48px;
+    background: #00a86b; color: #0b141a; border-radius: 28px; padding: 34px 36px;
+    display: flex; justify-content: space-between; align-items: center; gap: 20px;
+  }
+  .zap-twist b { font: 800 34px/1.15 "Space Grotesk"; }
+  .zap-twist span {
+    background: #0b141a; color: #00a86b; border-radius: 999px; padding: 16px 22px;
+    font: 700 20px "Space Grotesk"; white-space: nowrap;
+  }
+
+  /* —— 2 MATH —— */
+  .math { background: #ffb800; color: #1e3a2f; }
+  .math .huge {
+    position: absolute; left: 48px; right: 48px; top: 80px;
+    font-family: Bebas Neue, Anton, sans-serif; font-size: 220px; line-height: .82;
+    letter-spacing: -.02em;
+  }
+  .math .strike {
+    position: relative; display: inline-block; color: rgba(30,58,47,.35);
+  }
+  .math .strike::after {
+    content: ""; position: absolute; left: -4%; right: -4%; top: 48%;
+    height: 22px; background: #c1121f; transform: rotate(-8deg);
+  }
+  .math .eq {
+    position: absolute; left: 48px; right: 48px; top: 720px;
+    font: 700 42px/1.3 "Space Grotesk";
+  }
+  .math .foot {
+    position: absolute; left: 48px; right: 48px; bottom: 56px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    font: 700 26px "IBM Plex Mono";
+  }
+  .math .stamp {
+    background: #1e3a2f; color: #ffb800; padding: 18px 26px; border-radius: 8px;
+    transform: rotate(-3deg); font: 800 28px "Space Grotesk";
+  }
+
+  /* —— 3 NEON —— */
+  .neon {
+    background:
+      radial-gradient(600px 500px at 20% 20%, rgba(0,168,107,.35), transparent 60%),
+      radial-gradient(700px 600px at 90% 80%, rgba(255,184,0,.2), transparent 55%),
+      #050805;
+    color: #f4fff8;
+  }
+  .neon .kicker {
+    position: absolute; left: 56px; top: 64px;
+    font: 600 22px "IBM Plex Mono"; letter-spacing: .28em; color: #00a86b; text-transform: uppercase;
+  }
+  .neon .title {
+    position: absolute; left: 56px; right: 56px; top: 160px;
+    font-family: Anton, sans-serif; font-size: 128px; line-height: .9; text-transform: uppercase;
+  }
+  .neon .title em {
+    font-style: normal; color: #ffb800;
+    text-shadow: 0 0 40px rgba(255,184,0,.45), 0 0 80px rgba(255,184,0,.2);
+  }
+  .neon .city {
+    position: absolute; left: 56px; right: 56px; top: 620px;
+    font-family: "Playfair Display", serif; font-style: italic; font-weight: 900;
+    font-size: 92px; line-height: 1; color: #00a86b;
+  }
+  .neon .line {
+    position: absolute; left: 56px; right: 56px; top: 860px;
+    font: 600 34px/1.4 "Space Grotesk"; color: rgba(244,255,248,.78); max-width: 860px;
+  }
+  .neon .cta {
+    position: absolute; left: 56px; bottom: 64px;
+    border: 2px solid #ffb800; color: #ffb800; padding: 20px 32px;
+    font: 700 24px "IBM Plex Mono"; letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  /* —— 4 RECEIPT —— */
+  .receipt { background: #e8e4d9; }
+  .ticket {
+    position: absolute; left: 120px; right: 120px; top: 90px; bottom: 90px;
+    background: #faf8f2; box-shadow: 0 30px 80px rgba(0,0,0,.18);
+    padding: 64px 56px; font-family: "IBM Plex Mono", monospace; color: #1a1a1a;
+  }
+  .ticket::before, .ticket::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 18px;
+    background:
+      radial-gradient(circle at 12px 0, transparent 12px, #e8e4d9 13px) 0 0 / 24px 18px repeat-x;
+  }
+  .ticket::before { top: -9px; transform: rotate(180deg); }
+  .ticket::after { bottom: -9px; }
+  .ticket .shop { text-align: center; font: 800 36px "Space Grotesk"; margin-bottom: 8px; }
+  .ticket .sub { text-align: center; font-size: 18px; color: #666; margin-bottom: 36px; }
+  .ticket .row {
+    display: flex; justify-content: space-between; font-size: 26px; padding: 14px 0;
+    border-bottom: 1px dashed #ccc;
+  }
+  .ticket .row.bad .v { color: #c1121f; text-decoration: line-through; }
+  .ticket .row.good .v { color: #00a86b; font-weight: 700; }
+  .ticket .total {
+    margin-top: 40px; text-align: center; font: 800 48px "Space Grotesk"; color: #00a86b;
+  }
+  .ticket .note { margin-top: 28px; text-align: center; font-size: 20px; color: #555; line-height: 1.45; }
+  .ticket .brand {
+    margin-top: 48px; text-align: center; font: 800 28px "Space Grotesk"; color: #1e3a2f;
+  }
+
+  /* —— 5 BLACKOUT —— */
+  .blackout { background: #000; color: #fff; }
+  .blackout .word {
+    position: absolute; left: 48px; right: 48px;
+    font-family: Bebas Neue, sans-serif; text-transform: uppercase; letter-spacing: .02em;
+  }
+  .blackout .w1 { top: 100px; font-size: 160px; color: #333; }
+  .blackout .w2 { top: 280px; font-size: 160px; color: #555; }
+  .blackout .w3 { top: 460px; font-size: 160px; color: #00a86b; }
+  .blackout .w4 {
+    top: 720px; font-size: 120px; color: #ffb800;
+    text-shadow: 0 0 30px rgba(255,184,0,.35);
+  }
+  .blackout .meta {
+    position: absolute; left: 48px; right: 48px; bottom: 64px;
+    display: flex; justify-content: space-between; align-items: center;
+    font: 600 22px "IBM Plex Mono"; color: #888;
+  }
+  .blackout .meta b {
+    background: #00a86b; color: #000; padding: 14px 20px; font: 800 22px "Space Grotesk";
+  }
+
+  /* —— 6 CONFESSIONAL —— */
+  .conf {
+    background: linear-gradient(180deg, #1e3a2f 0%, #0f1f18 100%);
+    color: #f5faf7;
+  }
+  .conf .quote {
+    position: absolute; left: 64px; right: 64px; top: 180px;
+    font-family: "Playfair Display", serif; font-style: italic; font-weight: 700;
+    font-size: 78px; line-height: 1.12;
+  }
+  .conf .quote span { color: #ffb800; }
+  .conf .who {
+    position: absolute; left: 64px; top: 780px;
+    font: 600 26px "IBM Plex Mono"; color: #00a86b; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .conf .answer {
+    position: absolute; left: 64px; right: 64px; bottom: 80px;
+    border-top: 2px solid rgba(255,184,0,.4); padding-top: 36px;
+    font: 700 40px/1.25 "Space Grotesk";
+  }
+</style>
+</head>
+<body>
+
+<div class="label">01 · O áudio morreu (série Zap)</div>
+<div class="art zap" id="c-01" data-n="1">
+  <div class="zap-top">
+    <div class="zap-ava">PJ</div>
+    <div>
+      <div class="zap-name">Cliente Mucugê</div>
+      <div class="zap-sub">online · WhatsApp</div>
+    </div>
+  </div>
+  <div class="zap-thread">
+    <div class="bubble in">Boa noite! Tem delivery ainda?<div class="t">19:42</div></div>
+    <div class="bubble out">Tem sim. Manda o endereço<div class="t">19:43 ✓✓</div></div>
+    <div class="bubble in">🎤 0:47<div class="t">19:44</div></div>
+    <div class="bubble dead">Áudio · não ouviu · bateria 3%<div class="t">19:51</div></div>
+    <div class="bubble in">Cadê?<div class="t">20:12</div></div>
+    <div class="bubble out">Já saiu… acho<div class="t">20:18 ✓✓</div></div>
+  </div>
+  <div class="zap-twist">
+    <b>Isso acaba<br />no Peça Já.</b>
+    <span>Pedido pago · com código</span>
+  </div>
+</div>
+
+<div class="label">02 · 25 ≠ 18 (série Dinheiro)</div>
+<div class="art math" id="c-02" data-n="2">
+  <div class="huge">
+    R$ 25<br />
+    <span class="strike">R$ 18</span>
+  </div>
+  <div class="eq">
+    Se o prato é 25,<br />
+    por que a loja recebe 18?
+  </div>
+  <div class="foot">
+    <div>No Peça Já<br />cadastrou 25 → recebe 25</div>
+    <div class="stamp">SEM 20–30%</div>
+  </div>
+</div>
+
+<div class="label">03 · Mucugê acordou (série Cidade)</div>
+<div class="art neon" id="c-03" data-n="3">
+  <div class="kicker">Chapada · noite · delivery</div>
+  <div class="title">A cidade<br />não precisa<br />mais <em>gritar</em><br />no Zap.</div>
+  <div class="city">Mucugê.</div>
+  <div class="line">Restaurante, mercado, farmácia, padaria e bebidas — no mapa. Pix no app. Código na porta.</div>
+  <div class="cta">Peça Já</div>
+</div>
+
+<div class="label">04 · Cupom fiscal (série Prova)</div>
+<div class="art receipt" id="c-04" data-n="4">
+  <div class="ticket">
+    <div class="shop">PEÇA JÁ · MUCUGÊ</div>
+    <div class="sub">COMPARATIVO DO PRATO · R$ 25,00</div>
+    <div class="row bad"><span>OUTRO APP (~25%)</span><span class="v">R$ 18,75</span></div>
+    <div class="row"><span>COMISSÃO COMEU</span><span>R$ 6,25</span></div>
+    <div class="row good"><span>PEÇA JÁ · LOJA RECEBE</span><span class="v">R$ 25,00</span></div>
+    <div class="row"><span>TAXA APP (+R$ 2)</span><span>no cliente</span></div>
+    <div class="row"><span>FRETE</span><span>da moto</span></div>
+    <div class="total">PREÇO É SEU</div>
+    <div class="note">Não é cupom inventado.<br />É a regra do app.</div>
+    <div class="brand">🛒 Peça Já</div>
+  </div>
+</div>
+
+<div class="label">05 · Quatro tempos (série Tipografia)</div>
+<div class="art blackout" id="c-05" data-n="5">
+  <div class="word w1">Escolhe.</div>
+  <div class="word w2">Paga.</div>
+  <div class="word w3">Sai.</div>
+  <div class="word w4">Chega.</div>
+  <div class="meta">
+    <span>PIX · CÓDIGO · MUCUGÊ</span>
+    <b>PEÇA JÁ</b>
+  </div>
+</div>
+
+<div class="label">06 · Confissão do lojista (série Voz)</div>
+<div class="art conf" id="c-06" data-n="6">
+  <div class="quote">
+    “Eu não quero<br />mais um app<br />que <span>come</span><br />meu prato.”
+  </div>
+  <div class="who">— todo lojista de Mucugê, em silêncio</div>
+  <div class="answer">
+    Peça Já.<br />
+    O preço do cardápio fica com você.
+  </div>
+</div>
+
+<script>
+  const n = (location.hash || '').replace('#','');
+  if (n) {
+    document.body.classList.add('export');
+    document.querySelectorAll('.label').forEach(el => el.remove());
+    document.querySelectorAll('.art').forEach(el => {
+      if (el.dataset.n !== n) el.remove();
+    });
+  }
+</script>
+</body>
+</html>

@@ -148,11 +148,18 @@ export function resolveDeliveryCoords(
   return coordsFromSeed(`delivery:${key}`, demoCenter);
 }
 
-/** Ponto da loja (retirada). */
+/** Ponto da loja (retirada). Preferir lat/lng reais via `utils/merchantPin`. */
 export function resolveBusinessCoords(
   businessId: string,
-  businessName?: string
+  businessName?: string,
+  hint?: Partial<LatLng> | null
 ): LatLng {
+  if (isValidLatLng(hint?.latitude, hint?.longitude)) {
+    return {
+      latitude: round6(hint!.latitude as number),
+      longitude: round6(hint!.longitude as number),
+    };
+  }
   if (FIXED_BUSINESS_COORDS[businessId]) return FIXED_BUSINESS_COORDS[businessId];
   return coordsFromSeed(`shop:${businessId || businessName || 'loja'}`);
 }

@@ -26,6 +26,13 @@ export function newSessionToken(): string {
   return randomBytes(32).toString('hex');
 }
 
+export function newNumericCode(digits = 8): string {
+  const min = 10 ** (digits - 1);
+  const span = 9 * min;
+  const n = randomBytes(4).readUInt32BE(0) % span + min;
+  return String(n);
+}
+
 export function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${randomBytes(4).toString('hex')}`;
 }
@@ -37,4 +44,26 @@ export function sessionExpiresAt(days = 30): string {
 /** Fingerprint estável pra logs (nunca logar senha). */
 export function emailKey(email: string): string {
   return createHash('sha256').update(email.trim().toLowerCase()).digest('hex').slice(0, 12);
+}
+
+export function hashResetToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function tokensMatch(a: string, b: string): boolean {
+  try {
+    const left = Buffer.from(a);
+    const right = Buffer.from(b);
+    if (left.length !== right.length) return false;
+    return timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
+/** Hash fictício para equalizar tempo de login quando o e-mail não existe. */
+let dummyAuth: { salt: string; hash: string } | null = null;
+export function dummyPasswordCheck(password: string): void {
+  if (!dummyAuth) dummyAuth = hashPassword('timing-pad');
+  verifyPassword(password || 'x', dummyAuth.salt, dummyAuth.hash);
 }

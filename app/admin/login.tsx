@@ -1,6 +1,5 @@
 /**
- * Login HQ — cloud obrigatório, recuperação com código, ativação CEO via PIN.
- * Sem Alert nativo no fluxo principal (web-friendly).
+ * Login HQ — cloud obrigatório, sessão persistente, erros claros (API vs Postgres).
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -12,7 +11,9 @@ import {
   ActivityIndicator,
   ScrollView,
   Platform,
+  Switch,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -23,15 +24,20 @@ import {
   platformMe,
   platformAdminClaimCeo,
   asPlatformUser,
+  type PlatformHealthStatus,
 } from '@/services/platformClient';
 import { getPlatformToken } from '@/services/platformSession';
 import { getApiBaseUrl } from '@/services/apiBase';
 import { hq, hqStyles } from '@/app/admin/_ui';
+import { isStaffRole } from '@/services/platformRoles';
 
 type Mode = 'login' | 'recover' | 'register' | 'claim';
 
+const EMAIL_KEY = '@pecaja_hq_login_email';
+const REMEMBER_KEY = '@pecaja_hq_remember';
+
 export default function AdminLoginScreen() {
-  const { login, updateProfile, logout } = useAuth();
+  const { login, updateProfile, logout, cloudAuth, user } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,36 +46,44 @@ export default function AdminLoginScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [supportPin, setSupportPin] = useState('');
   const [busy, setBusy] = useState(false);
+  const [booting, setBooting] = useState(true);
+  const [remember, setRemember] = useState(true);
   const [msg, setMsg] = useState<{ type: 'err' | 'ok' | 'info'; text: string } | null>(null);
-  const [apiOnline, setApiOnline] = useState<boolean | null>(null);
-  const [shownCode, setShownCode] = useState('');
+  const [health, setHealth] = useState<PlatformHealthStatus | null>(null);
 
-  const checkApi = useCallback(async () => {
-    const h = await platformHealth();
-    setApiOnline(h.online);
+  const persistEmail = useCallback(async (em: string, keep: boolean) => {
+    try {
+      if (keep && em.includes('@')) {
+        await AsyncStorage.setItem(EMAIL_KEY, em.trim().toLowerCase());
+        await AsyncStorage.setItem(REMEMBER_KEY, '1');
+      } else {
+        await AsyncStorage.removeItem(EMAIL_KEY);
+        await AsyncStorage.setItem(REMEMBER_KEY, '0');
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  useEffect(() => {
-    void checkApi();
-  }, [checkApi]);
-
-  async function enterIfStaff() {
+  const enterIfStaff = useCallback(async (): Promise<boolean> => {
     const token = await getPlatformToken();
     if (!token) {
       setMsg({
         type: 'err',
-        text:
-          'Sessão só local — o HQ exige conta na nuvem. Confira a API e a senha da conta cloud.',
+        text: 'Sessão só local — o HQ exige conta na nuvem. Confira e-mail/senha da conta cloud.',
       });
       return false;
     }
     const me = await platformMe(token);
     const u = me ? asPlatformUser(me) : null;
     if (!u) {
-      setMsg({ type: 'err', text: 'Sessão inválida na API. Tente de novo.' });
+      setMsg({
+        type: 'err',
+        text: 'Sessão cloud inválida ou banco fora. Restaure o Postgres e entre de novo.',
+      });
       return false;
     }
-    if (u.platformRole === 'ceo' || u.platformRole === 'ops') {
+    if (isStaffRole(u.platformRole)) {
       await updateProfile({ platformRole: u.platformRole });
       router.replace('/admin/overview' as any);
       return true;
@@ -77,11 +91,66 @@ export default function AdminLoginScreen() {
     setMode('claim');
     setMsg({
       type: 'info',
-      text:
-        'Login ok, mas sem papel HQ. Use a aba Ativar HQ com o SUPPORT_PIN, ou coloque seu e-mail em PLATFORM_CEO_EMAILS no Railway.',
+      text: 'Login ok, sem papel HQ. Aba Ativar HQ → cole o SUPPORT_PIN do Railway.',
     });
     return false;
-  }
+  }, [updateProfile]);
+
+  const checkApi = useCallback(async () => {
+    const h = await platformHealth();
+    setHealth(h);
+    return h;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [savedEmail, savedRemember] = await Promise.all([
+          AsyncStorage.getItem(EMAIL_KEY),
+          AsyncStorage.getItem(REMEMBER_KEY),
+        ]);
+        if (cancelled) return;
+        const keep = savedRemember !== '0';
+        setRemember(keep);
+        if (keep && savedEmail) setEmail(savedEmail);
+
+        const h = await checkApi();
+        if (cancelled) return;
+
+        // Sessão já válida → entra direto (ficar na conta tranquilamente)
+        const token = await getPlatformToken();
+        if (token && h.online) {
+          const me = await platformMe(token);
+          const u = me ? asPlatformUser(me) : null;
+          if (u && isStaffRole(u.platformRole)) {
+            await updateProfile({ platformRole: u.platformRole });
+            if (!cancelled) router.replace('/admin/overview' as any);
+            return;
+          }
+          if (u && !isStaffRole(u.platformRole)) {
+            setMode('claim');
+            setMsg({
+              type: 'info',
+              text: 'Você já está logado. Ative o HQ com o SUPPORT_PIN.',
+            });
+          }
+        } else if (cloudAuth && user && isStaffRole(user.platformRole) && h.online) {
+          if (!cancelled) router.replace('/admin/overview' as any);
+          return;
+        }
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+    const id = setInterval(() => {
+      void checkApi();
+    }, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [checkApi, cloudAuth, updateProfile, user]);
 
   async function onLogin() {
     setBusy(true);
@@ -92,19 +161,29 @@ export default function AdminLoginScreen() {
         setMsg({ type: 'err', text: 'Informe e-mail e senha válidos.' });
         return;
       }
-      if (apiOnline === false) {
+      await persistEmail(em, remember);
+
+      const h = await checkApi();
+      if (!h.online) {
         setMsg({
           type: 'err',
-          text: `API offline (${getApiBaseUrl()}). Não dá para entrar no HQ sem nuvem.`,
+          text:
+            h.message ||
+            (h.processUp
+              ? 'Postgres indisponível. Restaure o banco no Supabase e atualize DATABASE_URL no Railway.'
+              : `API offline (${getApiBaseUrl()}).`),
         });
         return;
       }
+
       const res = await login(em, password);
       if (!res.success) {
         setMsg({ type: 'err', text: res.error || 'Não foi possível entrar.' });
         return;
       }
-      await enterIfStaff();
+      // Mantém a senha se falhar o papel HQ (claim); limpa só ao entrar no overview
+      const ok = await enterIfStaff();
+      if (ok) setPassword('');
     } finally {
       setBusy(false);
     }
@@ -119,7 +198,15 @@ export default function AdminLoginScreen() {
         setMsg({ type: 'err', text: 'Nome, e-mail e senha (mín. 6) são obrigatórios.' });
         return;
       }
-      // Prefere API direta via register do Auth (já sobe pra cloud)
+      await persistEmail(em, remember);
+      const h = await checkApi();
+      if (!h.online) {
+        setMsg({
+          type: 'err',
+          text: h.message || 'Nuvem indisponível — não dá para criar conta agora.',
+        });
+        return;
+      }
       const remote = await platformRegister({
         name: name.trim(),
         email: em,
@@ -128,7 +215,7 @@ export default function AdminLoginScreen() {
         address: '',
       });
       if (!remote) {
-        setMsg({ type: 'err', text: 'API offline — não deu para criar a conta.' });
+        setMsg({ type: 'err', text: 'Falha de rede ao criar conta. Tente de novo.' });
         return;
       }
       if (!remote.ok) {
@@ -142,15 +229,13 @@ export default function AdminLoginScreen() {
       }
       const res = await login(em, password);
       if (!res.success) {
-        setMsg({
-          type: 'ok',
-          text: 'Conta criada. Entre com o mesmo e-mail e senha.',
-        });
+        setMsg({ type: 'ok', text: 'Conta criada. Entre com o mesmo e-mail e senha.' });
         setMode('login');
         return;
       }
       setMsg({ type: 'ok', text: 'Conta criada na nuvem.' });
-      await enterIfStaff();
+      const ok = await enterIfStaff();
+      if (ok) setPassword('');
     } finally {
       setBusy(false);
     }
@@ -159,42 +244,29 @@ export default function AdminLoginScreen() {
   async function onRequestReset() {
     setBusy(true);
     setMsg(null);
-    setShownCode('');
+    setShownCodeSafe('');
     try {
       const em = email.trim().toLowerCase();
       if (!em.includes('@')) {
         setMsg({ type: 'err', text: 'Informe o e-mail da conta.' });
         return;
       }
+      await persistEmail(em, remember);
       const remote = await platformRequestPasswordReset(em);
       if (!remote) {
-        setMsg({ type: 'err', text: 'API offline — recuperação indisponível.' });
+        setMsg({ type: 'err', text: 'API/banco offline — recuperação indisponível.' });
         return;
       }
-      const code =
-        (typeof (remote as any).resetToken === 'string' && (remote as any).resetToken) ||
-        (typeof (remote as any).devResetToken === 'string' && (remote as any).devResetToken) ||
-        '';
-      if (code) {
-        setShownCode(String(code).toUpperCase());
-        setResetCode(String(code).toUpperCase());
-        setMsg({
-          type: 'ok',
-          text: 'Código gerado. Use-o abaixo com a nova senha (válido ~20 min).',
-        });
-      } else if (remote.ok) {
-        setMsg({
-          type: 'info',
-          text:
-            'Pedido ok, mas o servidor não devolveu o código. No Railway: EXPOSE_PASSWORD_RESET_CODE≠0 e redeploy.',
-        });
-      } else {
-        setMsg({ type: 'err', text: remote.message || 'Falha na recuperação.' });
-      }
+      setMsg({
+        type: 'info',
+        text: 'Se a conta existir, enviaremos as instruções por e-mail.',
+      });
     } finally {
       setBusy(false);
     }
   }
+
+  const [shownCode, setShownCodeSafe] = useState('');
 
   async function onApplyReset() {
     setBusy(true);
@@ -225,23 +297,63 @@ export default function AdminLoginScreen() {
     setBusy(true);
     setMsg(null);
     try {
-      const token = await getPlatformToken();
+      let token = await getPlatformToken();
+      if (!token && email.trim().includes('@') && password.length >= 4) {
+        const again = await login(email.trim().toLowerCase(), password);
+        if (!again.success) {
+          setMsg({
+            type: 'err',
+            text: again.error || 'A sessão caiu. Entre de novo com e-mail e senha.',
+          });
+          setMode('login');
+          return;
+        }
+        token = await getPlatformToken();
+      }
       if (!token) {
-        setMsg({ type: 'err', text: 'Faça login antes de ativar o HQ.' });
+        setMsg({
+          type: 'err',
+          text: 'A sessão da nuvem caiu. Entre de novo com e-mail e senha — o PIN continua valendo depois.',
+        });
         setMode('login');
         return;
       }
       const res = await platformAdminClaimCeo(token, supportPin.trim());
+      if (!res?.ok && (res as any)?.code === 'AUTH' && email.trim().includes('@') && password.length >= 4) {
+        const again = await login(email.trim().toLowerCase(), password);
+        token = await getPlatformToken();
+        if (again.success && token) {
+          const retry = await platformAdminClaimCeo(token, supportPin.trim());
+          if (retry?.ok) {
+            const u = asPlatformUser(retry);
+            if (u?.platformRole === 'ceo') {
+              await updateProfile({ platformRole: 'ceo' });
+              setSupportPin('');
+              setPassword('');
+              router.replace('/admin/overview' as any);
+              return;
+            }
+          }
+          setMsg({
+            type: 'err',
+            text: (retry as any)?.message || 'Não foi possível ativar o HQ.',
+          });
+          return;
+        }
+      }
       if (!res?.ok) {
         setMsg({
           type: 'err',
-          text: (res as any)?.message || 'PIN inválido. Confira SUPPORT_PIN no Railway e redeploy.',
+          text:
+            (res as any)?.message ||
+            'PIN inválido. Confira SUPPORT_PIN no Railway (Variables).',
         });
         return;
       }
       const u = asPlatformUser(res);
       if (u?.platformRole === 'ceo') {
         await updateProfile({ platformRole: 'ceo' });
+        setSupportPin('');
         router.replace('/admin/overview' as any);
         return;
       }
@@ -249,6 +361,41 @@ export default function AdminLoginScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onResumeSession() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const h = await checkApi();
+      if (!h.online) {
+        setMsg({ type: 'err', text: h.message || 'Nuvem indisponível.' });
+        return;
+      }
+      const ok = await enterIfStaff();
+      if (!ok && mode !== 'claim') {
+        setMsg({ type: 'info', text: 'Sessão encontrada, mas sem papel HQ — use Ativar HQ.' });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const statusLabel = !health
+    ? 'Checando nuvem…'
+    : health.online
+      ? `Nuvem ok · ${getApiBaseUrl().replace(/^https?:\/\//, '')}`
+      : health.processUp
+        ? 'API no ar · Postgres fora'
+        : 'API offline';
+
+  if (booting) {
+    return (
+      <View style={[styles.root, styles.boot]}>
+        <ActivityIndicator color={hq.green} size="large" />
+        <Text style={styles.bootText}>Abrindo HQ…</Text>
+      </View>
+    );
   }
 
   return (
@@ -259,25 +406,33 @@ export default function AdminLoginScreen() {
     >
       <View style={styles.hero}>
         <Text style={styles.kicker}>PEÇA JÁ</Text>
-        <Text style={styles.title}>Painel HQ</Text>
+        <Text style={styles.title}>Command Center</Text>
         <Text style={styles.sub}>
-          Operação da plataforma — lojas, pedidos, frota e equipe.
+          Operação, financeiro, CRM e auditoria. A sessão fica salva neste navegador.
         </Text>
         <View
           style={[
             styles.apiPill,
-            apiOnline === true && styles.apiOn,
-            apiOnline === false && styles.apiOff,
+            health?.online && styles.apiOn,
+            health && !health.online && styles.apiOff,
           ]}
         >
-          <Text style={styles.apiPillText}>
-            {apiOnline === null
-              ? 'Checando API…'
-              : apiOnline
-                ? `API online · ${getApiBaseUrl().replace(/^https?:\/\//, '')}`
-                : 'API offline — login cloud indisponível'}
-          </Text>
+          <Text style={styles.apiPillText}>{statusLabel}</Text>
         </View>
+        {health && !health.online && health.message ? (
+          <View style={[hqStyles.errBox, { marginTop: 12 }]}>
+            <Text style={hqStyles.errText}>{health.message}</Text>
+            <Text style={[hqStyles.errText, { marginTop: 8, opacity: 0.9 }]}>
+              1) Railway → serviço Postgres precisa estar Online{'\n'}
+              2) API → Variables: DATABASE_URL = {'${{Postgres.DATABASE_URL}}'}{'\n'}
+              3) FLEET_DATABASE_URL igual{'\n'}
+              4) Settings da API: App Sleeping = OFF + Restart ALWAYS
+            </Text>
+            <TouchableOpacity style={[hqStyles.btnGhost, { marginTop: 10 }]} onPress={() => void checkApi()}>
+              <Text style={hqStyles.btnGhostText}>Checar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -295,7 +450,7 @@ export default function AdminLoginScreen() {
               style={[styles.tab, mode === id && styles.tabOn]}
               onPress={() => {
                 setMode(id);
-                setMsg(null);
+                // Não limpa e-mail/senha ao trocar aba — evita “nunca salva”
               }}
             >
               <Text style={[styles.tabText, mode === id && styles.tabTextOn]}>{label}</Text>
@@ -332,7 +487,8 @@ export default function AdminLoginScreen() {
               placeholderTextColor={hq.faint}
               autoCapitalize="none"
               keyboardType="email-address"
-              autoComplete="email"
+              autoComplete="username"
+              textContentType="username"
               value={email}
               onChangeText={setEmail}
             />
@@ -341,12 +497,25 @@ export default function AdminLoginScreen() {
               placeholder="Senha"
               placeholderTextColor={hq.faint}
               secureTextEntry
+              autoComplete="current-password"
+              textContentType="password"
               value={password}
               onChangeText={setPassword}
               onSubmitEditing={() => void onLogin()}
             />
+            <View style={styles.rememberRow}>
+              <Text style={styles.rememberLabel}>Lembrar e-mail neste navegador</Text>
+              <Switch
+                value={remember}
+                onValueChange={(v) => {
+                  setRemember(v);
+                  void persistEmail(email, v);
+                }}
+                trackColor={{ false: hq.line, true: hq.green }}
+              />
+            </View>
             <TouchableOpacity
-              style={[hqStyles.btn, busy && { opacity: 0.7 }]}
+              style={[hqStyles.btn, (busy || health?.online === false) && { opacity: 0.7 }]}
               onPress={() => void onLogin()}
               disabled={busy}
             >
@@ -355,6 +524,13 @@ export default function AdminLoginScreen() {
               ) : (
                 <Text style={hqStyles.btnText}>Entrar no HQ</Text>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[hqStyles.btnGhost, { marginTop: 10 }]}
+              onPress={() => void onResumeSession()}
+              disabled={busy}
+            >
+              <Text style={hqStyles.btnGhostText}>Continuar sessão salva</Text>
             </TouchableOpacity>
           </>
         ) : null}
@@ -374,6 +550,7 @@ export default function AdminLoginScreen() {
               placeholderTextColor={hq.faint}
               autoCapitalize="none"
               keyboardType="email-address"
+              autoComplete="email"
               value={email}
               onChangeText={setEmail}
             />
@@ -382,6 +559,7 @@ export default function AdminLoginScreen() {
               placeholder="Senha (mín. 6)"
               placeholderTextColor={hq.faint}
               secureTextEntry
+              autoComplete="new-password"
               value={password}
               onChangeText={setPassword}
             />
@@ -458,7 +636,8 @@ export default function AdminLoginScreen() {
         {mode === 'claim' ? (
           <>
             <Text style={styles.hintBlock}>
-              Depois do login, use o SUPPORT_PIN do Railway para virar CEO nesta conta.
+              Depois do login, use o SUPPORT_PIN do Railway para virar CEO nesta conta. A sessão
+              permanece neste navegador.
             </Text>
             <TextInput
               style={[hqStyles.input, styles.gap]}
@@ -481,9 +660,16 @@ export default function AdminLoginScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[hqStyles.btnGhost, { marginTop: 10 }]}
-              onPress={() => void logout().then(() => setMode('login'))}
+              onPress={() =>
+                void logout().then(() => {
+                  setPassword('');
+                  setSupportPin('');
+                  setMode('login');
+                  setMsg({ type: 'info', text: 'Sessão encerrada neste navegador.' });
+                })
+              }
             >
-              <Text style={hqStyles.btnGhostText}>Trocar conta</Text>
+              <Text style={hqStyles.btnGhostText}>Sair / trocar conta</Text>
             </TouchableOpacity>
           </>
         ) : null}
@@ -494,6 +680,8 @@ export default function AdminLoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: hq.bg },
+  boot: { alignItems: 'center', justifyContent: 'center', gap: 12 },
+  bootText: { color: hq.muted, fontWeight: '600' },
   wrap: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -553,4 +741,11 @@ const styles = StyleSheet.create({
   tabTextOn: { color: hq.green },
   gap: { marginBottom: 10 },
   hintBlock: { color: hq.muted, fontSize: 13, lineHeight: 18, marginBottom: 12 },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  rememberLabel: { color: hq.muted, fontSize: 13, fontWeight: '600', flex: 1, paddingRight: 12 },
 });

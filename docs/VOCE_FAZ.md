@@ -3,8 +3,8 @@
 **Meta lojas:** [LANCAMENTO_LOJAS.md](./LANCAMENTO_LOJAS.md) — deixar A–D prontos; E = só publicar.  
 **Testes terça:** [TESTES_TERCA.md](./TESTES_TERCA.md).
 
-O código do piloto (cliente + ledger + saques + descoberta) está fechado.
-Split marketplace PJ-ready: [SPLIT_MARKETPLACE.md](./SPLIT_MARKETPLACE.md) (flag OFF).
+O repasse para qualquer banco está em [SPLIT_MARKETPLACE.md](./SPLIT_MARKETPLACE.md).
+Quando a conta Mercado Pago PJ abrir, seguir aquele arquivo. Loja e entregador não conectam Mercado Pago.
 Abaixo é **só ops** — contas e cliques que eu não posso fazer por você.
 
 ## 1) Banco (Supabase ou Neon) — 5 min

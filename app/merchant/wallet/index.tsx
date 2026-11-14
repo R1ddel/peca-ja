@@ -20,7 +20,9 @@ import {
   WalletEntry,
   WALLET_MIN_WITHDRAW,
   WALLET_MAX_WITHDRAWS_PER_DAY,
-  availableBalance,
+  pendingCashFeeDebt,
+  walletSignedBalance,
+  withdrawableBalance,
   totalCredited,
   totalWithdrawn,
   syncWalletFromOrders,
@@ -86,8 +88,20 @@ export default function MerchantWalletScreen() {
     }, [refresh])
   );
 
-  const balance = availableBalance(wallet);
-  const displayBalance = ledgerBalance != null ? ledgerBalance : balance;
+  const localSigned = walletSignedBalance(wallet);
+  const localAvailable = Math.max(0, localSigned);
+  const displayBalance = withdrawableBalance(wallet, ledgerBalance);
+  const cloudShort =
+    ledgerBalance != null && ledgerBalance + 0.009 < localAvailable;
+  const pendingCloud = orders.filter(
+    (o) => o.businessId === wallet?.businessId && o.merchantLedgerCredit === 'pending'
+  ).length;
+  const splitHeld = orders.filter((o) => {
+    if (o.businessId !== wallet?.businessId) return false;
+    const status = o.gatewaySplit?.merchantStatus;
+    return status === 'failed' || status === 'missing_key';
+  }).length;
+  const cashDebt = pendingCashFeeDebt(wallet);
   const credited = totalCredited(wallet);
   const withdrawn = totalWithdrawn(wallet);
   const todayCount = withdrawalsToday(wallet);
@@ -113,7 +127,7 @@ export default function MerchantWalletScreen() {
       ]);
       return;
     }
-    if (balance < WALLET_MIN_WITHDRAW) {
+    if (displayBalance < WALLET_MIN_WITHDRAW) {
       Alert.alert(
         'Saldo baixo',
         `Saque mínimo de ${formatPrice(WALLET_MIN_WITHDRAW)}. Seu saldo é ${formatPrice(displayBalance)}.`
@@ -133,14 +147,50 @@ export default function MerchantWalletScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <Text style={styles.heroLabel}>Saldo disponível</Text>
+          <Text style={styles.heroLabel}>Saldo para saque</Text>
           <Text style={styles.heroValue}>{formatPrice(displayBalance)}</Text>
           <Text style={styles.heroSub}>
-            {ledgerBalance != null
-              ? 'Fonte: ledger do servidor (saque usa este saldo)'
-              : 'Fonte: carteira local — faça login na API para sincronizar'}
+            Entra na entrega, nesta carteira. O saque sai deste valor
+            {ledgerBalance != null ? `, no teto da nuvem (${formatPrice(Math.max(0, ledgerBalance))})` : ''}.
           </Text>
           <Text style={styles.heroShop}>{shopName || 'Sua loja'}</Text>
+          {cloudShort || pendingCloud > 0 || splitHeld > 0 || (ledgerBalance == null && localAvailable >= 0.01) ? (
+            <View style={styles.debtBanner}>
+              <Ionicons name="cloud-offline" size={18} color="#92400E" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.debtTitle}>
+                  {splitHeld > 0
+                    ? 'O gateway ainda não enviou o Pix'
+                    : cloudShort
+                      ? 'Nuvem confirmou menos'
+                      : pendingCloud > 0
+                        ? 'Nuvem não confirmou o crédito'
+                        : 'Nuvem desconectada'}
+                </Text>
+                <Text style={styles.debtText}>
+                  {splitHeld > 0
+                    ? 'A entrega foi confirmada, mas a chave Pix não está no servidor ou o Mercado Pago recusou. O valor continua nesta carteira. Salve a chave de novo e o próximo pedido tenta o repasse outra vez.'
+                    : cloudShort
+                      ? `Esta carteira tem ${formatPrice(localAvailable)}. A nuvem tem ${formatPrice(Math.max(0, ledgerBalance ?? 0))}. O saque fica no menor valor até a nuvem aceitar.`
+                      : pendingCloud > 0
+                      ? `${pendingCloud === 1 ? '1 pedido entregue' : `${pendingCloud} pedidos entregues`} ainda sem crédito na nuvem. O saldo daqui pode subir, mas o Pix do servidor pode recusar.`
+                      : 'Sem sessão da nuvem. O número é desta carteira. O servidor pode recusar o Pix se o crédito de lá não entrou.'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+          {cashDebt >= 0.01 ? (
+            <View style={styles.debtBanner}>
+              <Ionicons name="alert-circle" size={18} color="#92400E" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.debtTitle}>Débito pendente · {formatPrice(cashDebt)}</Text>
+                <Text style={styles.debtText}>
+                  Taxa de pedidos em dinheiro. No próximo Pix ou cartão entregue, esse valor
+                  sai da parte da loja (não do frete do motoboy).
+                </Text>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
               <Text style={styles.heroStatVal}>{formatPrice(credited)}</Text>
@@ -157,14 +207,14 @@ export default function MerchantWalletScreen() {
         {canWithdraw ? (
           <>
             <TouchableOpacity
-              style={[styles.withdrawBtn, balance < WALLET_MIN_WITHDRAW && styles.withdrawBtnOff]}
+              style={[styles.withdrawBtn, displayBalance < WALLET_MIN_WITHDRAW && styles.withdrawBtnOff]}
               onPress={onWithdraw}
               activeOpacity={0.85}
             >
               <Ionicons name="arrow-up-circle" size={22} color="#fff" />
               <Text style={styles.withdrawBtnText}>Pedir saque</Text>
             </TouchableOpacity>
-            {!withdrawGate.ok && balance >= WALLET_MIN_WITHDRAW ? (
+            {!withdrawGate.ok && displayBalance >= WALLET_MIN_WITHDRAW ? (
               <Text style={styles.withdrawHint}>{withdrawGate.error}</Text>
             ) : (
               <Text style={styles.withdrawHint}>
@@ -224,14 +274,18 @@ export default function MerchantWalletScreen() {
           <Text style={styles.rulesTitle}>Como funciona</Text>
           <Rule
             icon="checkmark-circle-outline"
-            text="O valor da loja (establishment) entra no saldo assim que o pedido é confirmado para o cliente."
+            text="No Pix ou no cartão, depois que o cliente e o entregador confirmam, o gateway envia a parte da loja para a chave Pix. A taxa fica na Peça Já. O frete vai para quem entregou."
           />
           <Rule
             icon="flash-outline"
-            text="Não há depósito: o saldo nasce só das vendas. Saque quando quiser (sem espera D+1)."
+            text="O saque sai desta carteira, neste aparelho. Se a nuvem tiver confirmado menos, o valor fica limitado a ela."
           />
           <Rule
             icon="cash-outline"
+            text="Pedido em dinheiro: a loja fica com a cédula. A taxa Peça Já vira débito e é abatida no próximo Pix/cartão (não no frete)."
+          />
+          <Rule
+            icon="wallet-outline"
             text={`Mínimo de ${formatPrice(WALLET_MIN_WITHDRAW)} por saque e no máximo ${WALLET_MAX_WITHDRAWS_PER_DAY} saque por dia.`}
           />
           <Rule
@@ -240,7 +294,7 @@ export default function MerchantWalletScreen() {
           />
           <Rule
             icon="close-circle-outline"
-            text="Se o pedido for cancelado depois de confirmado, o crédito é estornado do saldo."
+            text="Se o pedido for cancelado depois da entrega, o crédito sai deste saldo."
           />
           <Rule
             icon="list-outline"
@@ -254,7 +308,7 @@ export default function MerchantWalletScreen() {
             <Ionicons name="wallet-outline" size={36} color={theme.colors.textMuted} />
             <Text style={styles.emptyTitle}>Nenhum lançamento ainda</Text>
             <Text style={styles.emptyText}>
-              Quando um pedido for confirmado, o valor da loja aparece aqui.
+              Quando um pedido for entregue, o valor da loja aparece aqui.
             </Text>
           </View>
         ) : (
@@ -283,9 +337,11 @@ function EntryRow({ entry }: { entry: WalletEntry }) {
       ? entry.status === 'failed'
         ? theme.colors.textMuted
         : '#DC2626'
-      : entry.type === 'reversal'
+      : entry.type === 'cash_fee' || entry.type === 'reversal'
         ? '#DC2626'
-        : '#059669';
+        : entry.type === 'cash_fee_recovery'
+          ? theme.colors.primary
+          : '#059669';
   const hasReceipt = entry.type === 'withdrawal' && entry.status === 'paid' && !!entry.receipt;
 
   return (
@@ -295,29 +351,35 @@ function EntryRow({ entry }: { entry: WalletEntry }) {
           styles.entryIcon,
           {
             backgroundColor:
-              entry.type === 'credit'
+              entry.type === 'credit' || entry.type === 'cash_fee_recovery'
                 ? '#05966918'
-                : entry.type === 'withdrawal'
-                  ? '#3B82F618'
-                  : '#DC262618',
+                : entry.type === 'cash_fee'
+                  ? '#B4530918'
+                  : entry.type === 'withdrawal'
+                    ? '#3B82F618'
+                    : '#DC262618',
           },
         ]}
       >
         <Ionicons
           name={
-            entry.type === 'credit'
+            entry.type === 'credit' || entry.type === 'cash_fee_recovery'
               ? 'arrow-down'
-              : entry.type === 'withdrawal'
-                ? 'arrow-up'
-                : 'return-down-back'
+              : entry.type === 'cash_fee'
+                ? 'swap-horizontal'
+                : entry.type === 'withdrawal'
+                  ? 'arrow-up'
+                  : 'return-down-back'
           }
           size={18}
           color={
-            entry.type === 'credit'
+            entry.type === 'credit' || entry.type === 'cash_fee_recovery'
               ? '#059669'
-              : entry.type === 'withdrawal'
-                ? '#3B82F6'
-                : '#DC2626'
+              : entry.type === 'cash_fee'
+                ? '#B45309'
+                : entry.type === 'withdrawal'
+                  ? '#3B82F6'
+                  : '#DC2626'
           }
         />
       </View>
@@ -378,6 +440,28 @@ const styles = StyleSheet.create({
   },
   heroSub: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 4 },
   heroShop: { color: 'rgba(255,255,255,0.75)', fontSize: theme.fontSize.sm, marginBottom: 8 },
+  debtBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  debtTitle: {
+    color: '#92400E',
+    fontWeight: '800',
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  debtText: {
+    color: '#78350F',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   heroStats: {
     flexDirection: 'row',
     marginTop: 8,

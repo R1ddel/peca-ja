@@ -15,7 +15,6 @@ import {
   isValidPin,
   createTimedStaffSession,
   clearSoftUnlock,
-  FIXED_PANEL_PIN,
 } from '@/utils/merchantTeam';
 import { logMerchantAudit } from '@/utils/merchantAudit';
 
@@ -133,19 +132,13 @@ export async function getOpenPunch(
 }
 
 /**
- * Valida PIN pessoal. Aceita também o PIN antigo 1234 se o membro ainda estiver com ele
- * ou se o PIN salvo for o fixo.
+ * Valida o PIN pessoal do membro. Sem fallback universal.
  */
 function verifyMemberPin(member: StaffMember, pinRaw: string): string | null {
   const pin = normalizePin(pinRaw);
-  if (!isValidPin(pin)) return 'Digite o PIN de 4 dígitos.';
-  const stored = member.pin || FIXED_PANEL_PIN;
-  if (stored !== pin) {
-    // Migração: membros antigos sem PIN pessoal usavam 1234
-    if (pin === FIXED_PANEL_PIN && (!member.pin || member.pin === FIXED_PANEL_PIN)) {
-      return null;
-    }
-    return `PIN incorreto. Se acabou de cadastrar, use o PIN que apareceu no alerta (não a senha).`;
+  if (!isValidPin(pin)) return 'PIN inválido.';
+  if (!member.pin || normalizePin(member.pin) !== pin) {
+    return 'PIN inválido.';
   }
   return null;
 }

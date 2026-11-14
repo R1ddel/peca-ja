@@ -46,8 +46,10 @@ async function httpHealth(): Promise<void> {
   if (!res.ok || !json?.ok) {
     throw new Error(`health falhou: ${JSON.stringify(json)}`);
   }
-  if (json.payments !== true) {
-    throw new Error(`health sem payments:true → ${JSON.stringify(json)}`);
+  if (typeof json.payments !== 'boolean' || json.payments !== !!json.mpConfigured) {
+    throw new Error(
+      `health payments deve seguir mpConfigured → ${JSON.stringify(json)}`
+    );
   }
   console.log(
     `OK  HTTP health → fleet=${json.fleet} platform=${json.platform} mp=${json.mpConfigured}`

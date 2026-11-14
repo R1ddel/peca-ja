@@ -79,14 +79,28 @@ export default function AdminTicketsScreen() {
             <Text style={styles.title}>{item.subject}</Text>
             <Text style={styles.meta}>
               {item.status} · {item.email}
+              {item.orderId ? ` · pedido ${item.orderId}` : ''}
             </Text>
-            <Text style={styles.body}>{item.body}</Text>
+            <View style={styles.thread}>
+              {(item.messages?.length
+                ? item.messages
+                : [{ at: item.createdAt, from: 'user' as const, text: item.body }]
+              ).map((m, i) => (
+                <View key={`${item.id}_${i}`} style={styles.threadRow}>
+                  <Text style={styles.threadFrom}>
+                    {m.from === 'support' ? 'Equipe' : 'Cliente'}
+                  </Text>
+                  <Text style={styles.threadText}>{m.text}</Text>
+                </View>
+              ))}
+            </View>
             <TextInput
               style={styles.input}
-              placeholder="Resposta…"
+              placeholder="Resposta ao cliente (aparece em Seus chamados)…"
               placeholderTextColor="#8b949e"
               value={reply[item.id] || ''}
               onChangeText={(t) => setReply((p) => ({ ...p, [item.id]: t }))}
+              multiline
             />
             <View style={styles.actions}>
               <TouchableOpacity
@@ -99,7 +113,7 @@ export default function AdminTicketsScreen() {
                 style={[styles.btn, styles.btnOk]}
                 onPress={() => void update(item.id, 'resolved')}
               >
-                <Text style={styles.btnText}>Resolver</Text>
+                <Text style={styles.btnText}>Resolver + enviar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -122,15 +136,32 @@ const styles = StyleSheet.create({
   },
   title: { color: '#fff', fontWeight: '800' },
   meta: { color: '#8b949e', fontSize: 12, marginTop: 4 },
-  body: { color: '#c9d1d9', marginTop: 8 },
+  thread: { marginTop: 10, gap: 6 },
+  threadRow: {
+    backgroundColor: '#0f1419',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#30363d',
+  },
+  threadFrom: {
+    color: '#8b949e',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  threadText: { color: '#c9d1d9', fontSize: 13, lineHeight: 18 },
   input: {
     marginTop: 10,
+    minHeight: 64,
     backgroundColor: '#0f1419',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#30363d',
     padding: 10,
     color: '#fff',
+    textAlignVertical: 'top',
   },
   actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
   btn: {

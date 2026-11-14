@@ -12,7 +12,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { navigateAfterAuth, sanitizeAuthReturnTo } from '@/utils/authReturnTo';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -21,6 +20,7 @@ import { PecaJaLogo } from '@/components/PecaJaLogo';
 import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { platformHealth } from '@/services/platformClient';
+import { suggestStrongPassword } from '@/utils/suggestPassword';
 import { isValidEmail, normalizeEmail } from '@/utils/authEmail';
 import { clearSavedLogin, getSavedLogin, saveLogin } from '@/utils/savedLogin';
 
@@ -45,13 +45,13 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [resetCode, setResetCode] = useState('');
-  const [shownCode, setShownCode] = useState('');
   const [recoverStep, setRecoverStep] = useState<'email' | 'code'>('email');
-  const [saveCredentials, setSaveCredentials] = useState(true);
+  const [saveCredentials, setSaveCredentials] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,16 +59,23 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
 
   useEffect(() => {
     void (async () => {
-      const saved = await getSavedLogin('customer');
-      if (saved) {
-        setEmail(saved.email);
-        setPassword(saved.password);
-        setSaveCredentials(true);
+      if (initialMode === 'register') {
+        await clearSavedLogin('customer');
+        setEmail('');
+        setPassword('');
+        setSaveCredentials(false);
+      } else if (initialMode === 'login') {
+        const saved = await getSavedLogin('customer');
+        if (saved?.email) {
+          setEmail(saved.email);
+          setSaveCredentials(true);
+        }
+        setPassword('');
       }
       const h = await platformHealth();
       setApiOnline(h.online);
     })();
-  }, []);
+  }, [initialMode]);
 
   const switchMode = useCallback((next: AuthMode) => {
     setMode(next);
@@ -77,13 +84,25 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
     setRecoverStep('email');
     setShownCode('');
     setResetCode('');
-    if (next !== 'register') {
-      setConfirmPassword('');
+    setPassword('');
+    setConfirmPassword('');
+    setPasswordOpen(false);
+    if (next === 'register') {
+      setEmail('');
+      setName('');
+      setPhone('');
+      setAddress('');
+      setSaveCredentials(false);
+      void clearSavedLogin('customer');
     }
   }, []);
 
-  async function persistCreds(em: string, pw: string) {
-    if (saveCredentials) await saveLogin('customer', em, pw);
+  async function persistEmail(em: string) {
+    if (mode !== 'login') {
+      await clearSavedLogin('customer');
+      return;
+    }
+    if (saveCredentials) await saveLogin('customer', em);
     else await clearSavedLogin('customer');
   }
 
@@ -102,7 +121,7 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
       setError(result.error ?? 'Não foi possível entrar.');
       return;
     }
-    await persistCreds(em, password);
+    await persistEmail(em);
     navigateAfterAuth(returnTo);
   }
 
@@ -135,7 +154,7 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
       setError(result.error ?? 'Não foi possível criar a conta.');
       return;
     }
-    await persistCreds(em, password);
+    await persistEmail(em);
     navigateAfterAuth(returnTo);
   }
 
@@ -148,36 +167,9 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
     setLoading(true);
     setError('');
     setInfo('');
-    setShownCode('');
-    const result = await requestPasswordReset(em);
+    await requestPasswordReset(em);
     setLoading(false);
-    if (!result.success) {
-      const text = (result.error ?? '').toLowerCase();
-      const missing =
-        text.includes('não encontramos') ||
-        text.includes('nao encontramos') ||
-        text.includes('não há conta') ||
-        text.includes('nao ha conta') ||
-        text.includes('crie uma conta');
-      if (missing) {
-        setError('');
-        setInfo(
-          'Este e-mail ainda não tem conta na nuvem (a antiga ficou só no celular). Crie agora com o mesmo e-mail — daí o login passa a valer de verdade.'
-        );
-        setMode('register');
-        return;
-      }
-      setError(result.error ?? 'Não foi possível recuperar esta conta.');
-      return;
-    }
-    const code = result.devResetToken ? String(result.devResetToken).toUpperCase() : '';
-    if (code) {
-      setShownCode(code);
-      setResetCode(code);
-      setInfo('Código gerado. Ele vale 20 minutos. Guarde e defina a nova senha abaixo.');
-    } else {
-      setInfo('Se a conta existir, use o código recebido para criar a nova senha.');
-    }
+    setInfo('Se a conta existir, enviaremos as instruções por e-mail.');
     setRecoverStep('code');
   }
 
@@ -203,7 +195,7 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
       setError(result.error ?? 'Não foi possível redefinir a senha.');
       return;
     }
-    await persistCreds(em, password);
+    await persistEmail(em);
     const entered = await login(em, password);
     if (entered.success) {
       router.replace('/(tabs)');
@@ -212,13 +204,6 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
     setInfo('Senha atualizada. Entre com a nova senha.');
     switchMode('login');
     setPassword(password);
-    setInfo('Senha atualizada. Entre com a nova senha.');
-  }
-
-  async function copyCode() {
-    if (!shownCode) return;
-    await Clipboard.setStringAsync(shownCode);
-    setInfo('Código copiado.');
   }
 
   return (
@@ -248,11 +233,10 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
               {(
                 [
                   ['login', 'Entrar'],
-                  ['recover', 'Recuperar'],
-                  ['register', 'Criar'],
+                  ['register', 'Criar conta'],
                 ] as const
               ).map(([id, label]) => {
-                const on = mode === id;
+                const on = mode === id || (id === 'login' && mode === 'recover');
                 return (
                   <TouchableOpacity
                     key={id}
@@ -331,6 +315,8 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="username"
                 />
                 <Input
                   label="Senha"
@@ -339,9 +325,41 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                   value={password}
                   onChangeText={setPassword}
                   isPassword
+                  autoComplete="current-password"
+                  textContentType="password"
                 />
                 <SaveLoginToggle checked={saveCredentials} onChange={setSaveCredentials} />
                 <Button title="Entrar" onPress={() => void onLogin()} loading={loading} size="lg" />
+                <TouchableOpacity onPress={() => switchMode('recover')} style={styles.linkBtn}>
+                  <Text style={styles.link}>Esqueci minha senha</Text>
+                </TouchableOpacity>
+                <View style={styles.otherAccess}>
+                  <Text style={styles.otherLabel}>Outro acesso</Text>
+                  <TouchableOpacity
+                    style={styles.otherRow}
+                    onPress={() => router.push('/partner/merchant-apply' as any)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="storefront-outline" size={22} color={theme.colors.primary} />
+                    <View style={styles.otherText}>
+                      <Text style={styles.otherTitle}>Cadastrar seu comércio</Text>
+                      <Text style={styles.otherHint}>Abra a loja e receba pedidos</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.otherRow}
+                    onPress={() => router.push('/driver/login' as any)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="bicycle-outline" size={22} color="#7C3AED" />
+                    <View style={styles.otherText}>
+                      <Text style={styles.otherTitle}>Entrar como entregador</Text>
+                      <Text style={styles.otherHint}>Painel de corridas e ganhos</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
               </>
             ) : null}
 
@@ -349,8 +367,7 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
               <>
                 <Text style={styles.title}>Recuperar conta</Text>
                 <Text style={styles.subtitle}>
-                  Procuramos na nuvem e neste celular (incluindo login salvo). Se achar, aparece um código para
-                  criar senha nova.
+                  Se a conta existir, enviaremos as instruções por e-mail. Use o código recebido para criar uma senha nova.
                 </Text>
                 <Input
                   label="E-mail da conta"
@@ -365,12 +382,6 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                 />
                 {recoverStep === 'code' ? (
                   <>
-                    {shownCode ? (
-                      <TouchableOpacity style={styles.codeBox} onPress={() => void copyCode()} activeOpacity={0.85}>
-                        <Text style={styles.codeLabel}>Seu código (toque para copiar)</Text>
-                        <Text style={styles.codeValue}>{shownCode}</Text>
-                      </TouchableOpacity>
-                    ) : null}
                     <Input
                       label="Código"
                       placeholder="8 caracteres"
@@ -386,7 +397,24 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                       value={password}
                       onChangeText={setPassword}
                       isPassword
+                      autoComplete="off"
+                      textContentType="none"
+                      importantForAutofill="no"
+                      passwordRules=""
+                      onFocus={() => setPasswordOpen(true)}
+                      editable={passwordOpen}
                     />
+                    <TouchableOpacity
+                      onPress={() => {
+                        const next = suggestStrongPassword();
+                        setPasswordOpen(true);
+                        setPassword(next);
+                        setConfirmPassword(next);
+                      }}
+                      style={styles.linkBtn}
+                    >
+                      <Text style={styles.link}>Sugerir uma senha forte (opcional)</Text>
+                    </TouchableOpacity>
                     <Input
                       label="Confirmar nova senha"
                       placeholder="Repita a senha"
@@ -394,8 +422,13 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
                       isPassword
+                      autoComplete="off"
+                      textContentType="none"
+                      importantForAutofill="no"
+                      passwordRules=""
+                      onFocus={() => setPasswordOpen(true)}
+                      editable={passwordOpen}
                     />
-                    <SaveLoginToggle checked={saveCredentials} onChange={setSaveCredentials} />
                     <Button
                       title="Salvar senha e entrar"
                       onPress={() => void onConfirmReset()}
@@ -463,6 +496,8 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="off"
+                  textContentType="none"
                 />
                 <Input
                   label="Telefone"
@@ -486,7 +521,24 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                   value={password}
                   onChangeText={setPassword}
                   isPassword
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
+                  passwordRules=""
+                  onFocus={() => setPasswordOpen(true)}
+                  editable={passwordOpen}
                 />
+                <TouchableOpacity
+                  onPress={() => {
+                    const next = suggestStrongPassword();
+                    setPasswordOpen(true);
+                    setPassword(next);
+                    setConfirmPassword(next);
+                  }}
+                  style={styles.linkBtn}
+                >
+                  <Text style={styles.link}>Sugerir uma senha forte (opcional)</Text>
+                </TouchableOpacity>
                 <Input
                   label="Confirmar senha"
                   placeholder="Repita a senha"
@@ -494,8 +546,13 @@ export function CustomerAuthForm({ initialMode = 'login' }: Props) {
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   isPassword
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
+                  passwordRules=""
+                  onFocus={() => setPasswordOpen(true)}
+                  editable={passwordOpen}
                 />
-                <SaveLoginToggle checked={saveCredentials} onChange={setSaveCredentials} />
                 <Button title="Criar e entrar" onPress={() => void onRegister()} loading={loading} size="lg" />
               </>
             ) : null}
@@ -639,4 +696,31 @@ const styles = StyleSheet.create({
   },
   linkBtn: { marginTop: 14, alignItems: 'center' },
   link: { color: theme.colors.primary, fontWeight: '700', fontSize: 14 },
+  otherAccess: {
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    gap: 8,
+  },
+  otherLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textMuted,
+    marginBottom: 2,
+  },
+  otherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: theme.colors.background,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  otherText: { flex: 1 },
+  otherTitle: { fontSize: 15, fontWeight: '700', color: theme.colors.text },
+  otherHint: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
 });

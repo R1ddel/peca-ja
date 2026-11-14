@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { theme } from '@/constants/theme';
 
 type BackHeaderProps = {
@@ -24,6 +25,12 @@ export function BackHeader({
   fallbackParams,
 }: BackHeaderProps) {
   const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    document.title = title ? `${title} · Peça Já` : 'Peça Já';
+  }, [title]);
 
   function handleBack() {
     if (!preferFallback && router.canGoBack()) {
@@ -38,7 +45,7 @@ export function BackHeader({
   }
 
   return (
-    <View style={[styles.wrapper, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.wrapper, { paddingTop: topInset + 8 }]}>
       <View style={styles.row}>
         <TouchableOpacity
           onPress={handleBack}

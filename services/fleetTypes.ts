@@ -14,6 +14,8 @@ export type FleetDriverPresence = {
   latitude?: number;
   longitude?: number;
   heading?: number;
+  /** Cidade de atuação escolhida no cadastro. */
+  city?: string;
   blocked?: boolean;
   blockedReason?: string;
   blockedAt?: string;

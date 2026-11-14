@@ -1,18 +1,51 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { BackHeader } from '@/components/BackHeader';
+import { InAppGoogleMap } from '@/components/InAppGoogleMap';
 import { theme } from '@/constants/theme';
+import { getUserPlaceDetails, type UserPlaceDetails } from '@/services/permissions';
 
-/** Stub web — não reexportar MapScreen (evita loop de resolução de plataforma). */
+/** Mapa completo na web — Google Maps embutido com o pin correto. */
 export default function MapScreenWeb() {
+  const [place, setPlace] = useState<UserPlaceDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reload() {
+    setLoading(true);
+    setError(null);
+    try {
+      const details = await getUserPlaceDetails();
+      setPlace(details);
+      if (!details) setError('Ative a localização para ver o mapa.');
+    } catch {
+      setError('Não foi possível ler a localização.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
   return (
     <View style={styles.screen}>
       <BackHeader title="Mapa" />
-      <View style={styles.box}>
-        <Text style={styles.title}>Mapa disponível no celular</Text>
-        <Text style={styles.sub}>
-          Abra o Peça Já no Expo Go (iOS/Android) para ver o mapa completo.
-        </Text>
+      <View style={styles.body}>
+        <InAppGoogleMap
+          center={
+            place
+              ? { latitude: place.latitude, longitude: place.longitude }
+              : { latitude: -13.0054, longitude: -41.3706 }
+          }
+          label="Você"
+          cityLabel={place?.city || 'Sua região'}
+          height={420}
+          loading={loading && !place}
+          error={!place ? error : null}
+          onRefresh={() => void reload()}
+        />
       </View>
     </View>
   );
@@ -20,22 +53,5 @@ export default function MapScreenWeb() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
-  box: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xl,
-    gap: theme.spacing.sm,
-  },
-  title: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
-    textAlign: 'center',
-  },
-  sub: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
+  body: { flex: 1, padding: theme.spacing.md },
 });

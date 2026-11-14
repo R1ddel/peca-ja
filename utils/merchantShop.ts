@@ -6,11 +6,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Business, MenuItem } from '@/types';
 import { BusinessCategory, categoryConfig } from '@/constants/theme';
 import { MerchantPlan } from '@/constants/plans';
-import { MerchantApplication } from '@/utils/partners';
+import {
+  isMerchantSubscriptionActive,
+  listPartnerApplications,
+  MerchantApplication,
+} from '@/utils/partners';
 import { setPartnerBusinessesCache } from '@/data/businesses';
-import { WeeklyHours } from '@/utils/weeklyHours';
+import { WeeklyHours, formatWeeklyHoursSummary } from '@/utils/weeklyHours';
 import { formatDistanceKm, haversineKm } from '@/utils/geo';
 import { getActiveDemoLocation } from '@/utils/demoLocation';
+import type { ShopPaymentMethod } from '@/utils/paymentMethods';
+import type { ShopDeliveryMode } from '@/utils/shopDelivery';
 
 const KEY = '@pecaja_merchant_shops_v1';
 
@@ -44,10 +50,16 @@ export type MerchantShop = {
   state?: string;
   /** Raio de atendimento em km (padrão 8). */
   serviceRadiusKm?: number;
+  /** Fim da mensalidade paga. Sem data vigente a loja fica fora do catálogo. */
+  planPaidUntil?: string;
   /** Suspensa pelo HQ — some da descoberta do cliente. */
   suspended?: boolean;
   suspendedAt?: string;
   suspendedReason?: string;
+  /** Pagamentos que o cliente pode usar nesta loja. */
+  acceptedPayments?: ShopPaymentMethod[];
+  /** store = entregador próprio. app = motoboy da Peça Já. */
+  deliveryBy?: ShopDeliveryMode;
   /**
    * Marketplace MP: collector/user id do lojista.
    * Preencher após OAuth seller (split 1:1).
@@ -64,9 +76,6 @@ const DEFAULT_LOGO =
   'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=400&h=300&q=80';
 const DEFAULT_COVER =
   'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=800&h=400&q=80';
-const DEFAULT_DISH =
-  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=300&q=80';
-
 function normalizeCategory(raw: string): BusinessCategory {
   const key = raw
     .normalize('NFD')
@@ -102,7 +111,7 @@ async function loadAll(): Promise<MerchantShop[]> {
 async function saveAll(list: MerchantShop[], syncShops?: MerchantShop[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(list));
   setPartnerBusinessesCache(
-    filterActiveShopsForCatalog(list).map(shopToBusiness)
+    filterActiveShopsForCatalog(await stampShopBilling(list)).map(shopToBusiness)
   );
   const toSync = syncShops?.length ? syncShops : [];
   if (toSync.length === 0) return;
@@ -157,12 +166,43 @@ export function shopToBusiness(shop: MerchantShop): Business {
     menu: shop.menu.filter((m) => m.available !== false),
     sellsDrinks: shop.category === 'restaurante' || shop.category === 'bebidas',
     plan: shop.plan,
+    acceptedPayments: shop.acceptedPayments,
+    deliveryBy: shop.deliveryBy,
   };
 }
 
-/** Remove lojas suspensas do HQ do catálogo do cliente. */
+/** Mensalidade vigente: 30 dias a partir do pagamento. */
+export function shopSubscriptionActive(shop: MerchantShop): boolean {
+  if (!shop.planPaidUntil) return false;
+  const until = new Date(shop.planPaidUntil).getTime();
+  return !Number.isNaN(until) && until > Date.now();
+}
+
+/** Copia a vigência do cadastro para a loja antes de mostrar ao cliente. */
+export async function stampShopBilling(shops: MerchantShop[]): Promise<MerchantShop[]> {
+  try {
+    const apps = await listPartnerApplications();
+    const byApp = new Map(
+      apps.filter((a) => a.role === 'merchant').map((a) => [a.id, a as MerchantApplication])
+    );
+    return shops.map((shop) => {
+      const app = byApp.get(shop.applicationId);
+      if (!app) return shop;
+      return {
+        ...shop,
+        plan: app.plan || shop.plan,
+        planPaidUntil: app.planPaidUntil,
+        isOpen: isMerchantSubscriptionActive(app) ? shop.isOpen : false,
+      };
+    });
+  } catch {
+    return shops;
+  }
+}
+
+/** Loja suspensa ou com a mensalidade vencida fica fora do catálogo. */
 export function filterActiveShopsForCatalog(shops: MerchantShop[]): MerchantShop[] {
-  return shops.filter((s) => !s.suspended);
+  return shops.filter((s) => !s.suspended && shopSubscriptionActive(s));
 }
 
 /**
@@ -237,7 +277,9 @@ export async function hydratePartnerShops(): Promise<MerchantShop[]> {
   } catch {
     /* offline */
   }
-  setPartnerBusinessesCache(filterActiveShopsForCatalog(list).map(shopToBusiness));
+  setPartnerBusinessesCache(
+    filterActiveShopsForCatalog(await stampShopBilling(list)).map(shopToBusiness)
+  );
   return list;
 }
 
@@ -257,20 +299,8 @@ export async function getShopByBusinessId(businessId: string): Promise<MerchantS
   return list.find((s) => s.businessId === businessId) ?? null;
 }
 
-function starterMenu(shopName: string): MenuItem[] {
-  return [
-    {
-      id: `item_${Date.now()}_1`,
-      name: 'Produto destaque',
-      description: `Primeiro item do cardápio de ${shopName}. Edite ou troque pela sua oferta.`,
-      details: 'Toque em editar no painel para mudar nome, preço e foto.',
-      price: 19.9,
-      image: DEFAULT_DISH,
-      images: [DEFAULT_DISH],
-      category: 'Destaques',
-      popular: true,
-    },
-  ];
+function starterMenu(_shopName: string): MenuItem[] {
+  return [];
 }
 
 /** Garante loja operacional quando o painel é liberado. */
@@ -286,6 +316,17 @@ export async function ensureShopFromApplication(
       category: normalizeCategory(app.category || existing.category),
       address: app.address || existing.address,
       plan: app.plan || existing.plan,
+      planPaidUntil: app.planPaidUntil,
+      isOpen: isMerchantSubscriptionActive(app) ? existing.isOpen : false,
+      weeklyHours: existing.weeklyHours ?? app.weeklyHours,
+      hours: existing.weeklyHours
+        ? existing.hours
+        : app.weeklyHours
+          ? formatWeeklyHoursSummary(app.weeklyHours)
+          : existing.hours,
+      acceptedPayments: existing.acceptedPayments ?? app.acceptedPayments,
+      deliveryBy: existing.deliveryBy ?? app.deliveryBy,
+      city: existing.city || app.city,
       updatedAt: new Date().toISOString(),
     };
     const next = list.map((s) => (s.applicationId === app.id ? synced : s));
@@ -318,8 +359,10 @@ export async function ensureShopFromApplication(
     address: app.address || '',
     image: DEFAULT_LOGO,
     coverImage: DEFAULT_COVER,
-    isOpen: true,
-    hours: '08:00–22:00',
+      isOpen: isMerchantSubscriptionActive(app),
+      planPaidUntil: app.planPaidUntil,
+    hours: app.weeklyHours ? formatWeeklyHoursSummary(app.weeklyHours) : '08:00–22:00',
+    weeklyHours: app.weeklyHours,
     deliveryTime: '30-50 min',
     deliveryFee: 5,
     minOrder: 0,
@@ -330,8 +373,10 @@ export async function ensureShopFromApplication(
     updatedAt: now,
     latitude,
     longitude,
-    city,
+    city: app.city || city,
     serviceRadiusKm: 8,
+    acceptedPayments: app.acceptedPayments,
+    deliveryBy: app.deliveryBy,
   };
 
   await saveAll([shop, ...list], [shop]);
@@ -357,12 +402,15 @@ export async function patchShop(
       | 'minOrder'
       | 'tags'
       | 'plan'
+      | 'planPaidUntil'
       | 'menu'
       | 'latitude'
       | 'longitude'
       | 'city'
       | 'state'
       | 'serviceRadiusKm'
+      | 'acceptedPayments'
+      | 'deliveryBy'
     >
   >
 ): Promise<MerchantShop | null> {
@@ -374,6 +422,13 @@ export async function patchShop(
     ...patch,
     updatedAt: new Date().toISOString(),
   };
+  // `undefined`/`null` em lat/lng remove o pin (JSON não persiste undefined sozinho).
+  if ('latitude' in patch && (patch.latitude == null || !Number.isFinite(patch.latitude))) {
+    delete updated.latitude;
+  }
+  if ('longitude' in patch && (patch.longitude == null || !Number.isFinite(patch.longitude))) {
+    delete updated.longitude;
+  }
   list[idx] = updated;
   await saveAll(list, [updated]);
   return updated;

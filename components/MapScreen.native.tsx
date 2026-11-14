@@ -16,7 +16,7 @@ import { CategoryChip } from '@/components/CategoryChip';
 import { getBusinessLogoSource } from '@/utils/businessLogos';
 import { theme, BusinessCategory, categoryConfig } from '@/constants/theme';
 import { getUserPlaceDetails, type UserPlaceDetails } from '@/services/permissions';
-import { openMapsAt, openMapsRoute } from '@/utils/openMaps';
+import { openGoogleToPlace, openMapsAt } from '@/utils/openMaps';
 import { getAllBusinesses, formatPrice } from '@/data/businesses';
 import { parseDistanceKm } from '@/components/HomeFilters';
 import { merchantCoordsNearCustomer } from '@/services/payment';
@@ -151,12 +151,13 @@ export default function MapScreen() {
   }
 
   async function handleOpenRoute() {
-    if (!place || !selectedPin) return;
-    await openMapsRoute(
-      { latitude: place.latitude, longitude: place.longitude },
-      { latitude: selectedPin.latitude, longitude: selectedPin.longitude },
-      selectedPin.business.name
-    );
+    if (!selectedPin) return;
+    await openGoogleToPlace({
+      latitude: selectedPin.latitude,
+      longitude: selectedPin.longitude,
+      label: selectedPin.business.name,
+      address: selectedPin.business.name,
+    });
   }
 
   return (

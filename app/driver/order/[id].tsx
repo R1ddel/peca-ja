@@ -18,7 +18,8 @@ import { useOrders } from '@/context/OrdersContext';
 import { resolveDriverApplication } from '@/utils/partners';
 import { getBusinessById } from '@/data/businesses';
 import { formatPrice } from '@/data/businesses';
-import { openMapsAddress } from '@/utils/openMaps';
+import { CashHandoffCard } from '@/components/CashHandoffCard';
+import { openGoogleToPlace, openWazeToPlace } from '@/utils/openMaps';
 import { DriverRouteMap } from '@/components/DriverRouteMap';
 import {
   driverFleetId,
@@ -30,6 +31,7 @@ import {
   driverPublicProfile,
 } from '@/utils/driverOps';
 import { usePublishDriverLocation } from '@/hooks/usePublishDriverLocation';
+import { DriverGpsBanner } from '@/components/DriverGpsBanner';
 import { merchantOrderLabel } from '@/utils/merchantOrderNumber';
 import { OrderPersonCard } from '@/components/OrderPersonCard';
 import { theme } from '@/constants/theme';
@@ -54,6 +56,7 @@ export default function DriverOrderDetailScreen() {
   const [driverPhotoUrl, setDriverPhotoUrl] = useState<string | undefined>();
   const [driverBio, setDriverBio] = useState<string | undefined>();
   const [driverVehicle, setDriverVehicle] = useState<string | undefined>();
+  const [driverCity, setDriverCity] = useState<string | undefined>();
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -61,7 +64,7 @@ export default function DriverOrderDetailScreen() {
     useCallback(() => {
       void (async () => {
         const app = await resolveDriverApplication(user?.email);
-        if (app?.status === 'approved') {
+        if (app?.role === 'driver' && app.status === 'approved') {
           setFleetId(driverFleetId(app));
           setApplicationId(app.id);
           setDriverName(app.name);
@@ -70,6 +73,7 @@ export default function DriverOrderDetailScreen() {
           setDriverPhotoUrl(pub.photoUrl);
           setDriverBio(pub.bio);
           setDriverVehicle(pub.vehicle);
+          setDriverCity(app.city);
         }
         setReady(true);
       })();
@@ -81,13 +85,14 @@ export default function DriverOrderDetailScreen() {
     [order, fleetId]
   );
 
-  usePublishDriverLocation(
+  const gpsStatus = usePublishDriverLocation(
     fleetId && applicationId
       ? {
           fleetId,
           applicationId,
           name: driverName,
           phone: driverPhone,
+          city: driverCity,
         }
       : null,
     mine && !!order && order.status !== 'entregue' && order.status !== 'cancelado'
@@ -162,27 +167,47 @@ export default function DriverOrderDetailScreen() {
     <MobileShell style={styles.screen}>
       <BackHeader title={`#${order.id.slice(-6).toUpperCase()}`} fallbackHref="/driver/active" />
       <ScrollView contentContainerStyle={styles.content}>
+        <DriverGpsBanner
+          status={
+            mine && order.status !== 'entregue' && order.status !== 'cancelado'
+              ? gpsStatus
+              : 'idle'
+          }
+        />
         <View style={styles.hero}>
           <Text style={styles.heroBiz}>{order.businessName}</Text>
           <Text style={styles.heroStatus}>{statusLabelPt(order.status)}</Text>
           <Text style={styles.heroPay}>{formatPrice(driverEarningsOf(order))} frete</Text>
+          {order.status === 'entregue' ? (
+            <View style={styles.heroCodeBox}>
+              <Text style={styles.heroCodeLbl}>Entrega concluída</Text>
+              <Text style={styles.heroCodeHint}>
+                O código do cliente foi aceito. O pedido saiu da sua rota e o frete entra na carteira.
+              </Text>
+            </View>
+          ) : order.status !== 'cancelado' && (mine || !!order.driverId) ? (
+            <View style={styles.heroCodeBox}>
+              <Text style={styles.heroCodeLbl}>Código para a loja</Text>
+              <Text style={styles.heroCodeShop}>Pedido {merchantOrderLabel(order)}</Text>
+              {order.pickupCode ? (
+                <Text style={styles.heroCode}>{order.pickupCode}</Text>
+              ) : (
+                <Text style={styles.heroCodeWait}>
+                  Este número ainda não chegou nesta corrida. Feche e abra de novo em alguns segundos.
+                </Text>
+              )}
+              <Text style={styles.heroCodeHint}>
+                {order.pickupVerifiedAt
+                  ? 'A loja já digitou este código e liberou a saída.'
+                  : 'Mostre este código no balcão. A loja digita no painel dela para liberar o pedido.'}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
-        <DriverRouteMap order={order} trackDriver={mine} />
-
-                {mine && order.pickupCode && !order.pickupVerifiedAt ? (
-          <View style={styles.codeCard}>
-            <Text style={styles.codeLbl}>Mostre na loja</Text>
-            <Text style={styles.codeShop}>
-              Pedido da loja {merchantOrderLabel(order)}
-            </Text>
-            <Text style={styles.codeVal}>{order.pickupCode}</Text>
-            <Text style={styles.codeHint}>
-              Diga o número do pedido e mostre este código. A loja digita no painel dela para
-              liberar.
-            </Text>
-          </View>
-        ) : null}
+        {order.status === 'entregue' ? null : (
+          <DriverRouteMap order={order} trackDriver={mine} />
+        )}
 
         {mine && order.status === 'saiu_entrega' ? (
           <TouchableOpacity
@@ -199,18 +224,44 @@ export default function DriverOrderDetailScreen() {
           </TouchableOpacity>
         ) : null}
 
+        <CashHandoffCard order={order} viewer="driver" />
+
         <Text style={styles.section}>Buscar na loja</Text>
-        <TouchableOpacity
-          style={styles.navCard}
-          onPress={() => void openMapsAddress(shopAddress, order.businessName)}
-        >
+        <View style={styles.navCard}>
           <Ionicons name="storefront" size={22} color={ACCENT} />
           <View style={{ flex: 1 }}>
             <Text style={styles.navTitle}>{order.businessName}</Text>
-            <Text style={styles.navSub}>{shopAddress || 'Abrir no mapa'}</Text>
+            <Text style={styles.navSub}>{shopAddress || 'Abrir no GPS'}</Text>
+            <View style={styles.gpsRow}>
+              <TouchableOpacity
+                style={styles.wazeBtn}
+                onPress={() =>
+                  void openWazeToPlace({
+                    address: shopAddress,
+                    label: order.businessName,
+                    latitude: order.businessLatitude,
+                    longitude: order.businessLongitude,
+                  })
+                }
+              >
+                <Text style={styles.wazeBtnText}>Waze</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.googleBtn}
+                onPress={() =>
+                  void openGoogleToPlace({
+                    address: shopAddress,
+                    label: order.businessName,
+                    latitude: order.businessLatitude,
+                    longitude: order.businessLongitude,
+                  })
+                }
+              >
+                <Text style={styles.googleBtnText}>Google</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Ionicons name="navigate" size={20} color={theme.colors.primary} />
-        </TouchableOpacity>
+        </View>
 
         <Text style={styles.section}>Entregar ao cliente</Text>
         <OrderPersonCard
@@ -221,17 +272,41 @@ export default function DriverOrderDetailScreen() {
           photoUrl={order.customerPhotoUrl}
           phone={order.customerPhone}
         />
-        <TouchableOpacity
-          style={styles.navCard}
-          onPress={() => void openMapsAddress(order.address, order.customerName || 'Cliente')}
-        >
+        <View style={styles.navCard}>
           <Ionicons name="home" size={22} color="#059669" />
           <View style={{ flex: 1 }}>
             <Text style={styles.navTitle}>Endereço do cliente</Text>
             <Text style={styles.navSub}>{order.address}</Text>
+            <View style={styles.gpsRow}>
+              <TouchableOpacity
+                style={styles.wazeBtn}
+                onPress={() =>
+                  void openWazeToPlace({
+                    address: order.address,
+                    label: order.customerName || 'Cliente',
+                    latitude: order.deliveryLatitude,
+                    longitude: order.deliveryLongitude,
+                  })
+                }
+              >
+                <Text style={styles.wazeBtnText}>Waze</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.googleBtn}
+                onPress={() =>
+                  void openGoogleToPlace({
+                    address: order.address,
+                    label: order.customerName || 'Cliente',
+                    latitude: order.deliveryLatitude,
+                    longitude: order.deliveryLongitude,
+                  })
+                }
+              >
+                <Text style={styles.googleBtnText}>Google</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Ionicons name="navigate" size={20} color={theme.colors.primary} />
-        </TouchableOpacity>
+        </View>
 
         {isKitchenReadyForPickup(order) ? (
           <View style={styles.readyBox}>
@@ -298,30 +373,40 @@ const styles = StyleSheet.create({
   heroBiz: { color: '#fff', fontSize: 20, fontWeight: '800' },
   heroStatus: { color: 'rgba(255,255,255,0.8)', marginTop: 4, fontSize: 13 },
   heroPay: { color: '#FDE68A', fontWeight: '800', fontSize: 18, marginTop: 10 },
-  codeCard: {
-    backgroundColor: '#EEF2FF',
-    borderRadius: 16,
-    padding: 16,
+  heroCodeBox: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#C7D2FE',
   },
-  codeLbl: { color: '#4338CA', fontWeight: '600', fontSize: 13 },
-  codeShop: {
-    color: '#312E81',
+  heroCodeLbl: {
+    color: '#FDE68A',
     fontWeight: '800',
-    fontSize: 18,
-    marginTop: 4,
+    fontSize: 15,
+    letterSpacing: 0.4,
   },
-  codeVal: {
-    fontSize: 40,
-    letterSpacing: 10,
+  heroCodeShop: { color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: 14, marginTop: 4 },
+  heroCode: {
+    color: '#FFFFFF',
+    fontSize: 52,
     fontWeight: '800',
-    color: '#312E81',
-    marginVertical: 8,
+    letterSpacing: 12,
+    marginVertical: 6,
   },
-  codeHint: { color: '#6366F1', fontSize: 12, textAlign: 'center', lineHeight: 17 },
+  heroCodeHint: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  heroCodeWait: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginVertical: 10,
+  },
   deliverCta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,6 +437,21 @@ const styles = StyleSheet.create({
   },
   navTitle: { fontWeight: '700', color: theme.colors.text },
   navSub: { fontSize: 12, color: theme.colors.textMuted, marginTop: 2 },
+  gpsRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  wazeBtn: {
+    backgroundColor: '#33CCFF',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  wazeBtnText: { color: '#0F172A', fontWeight: '800', fontSize: 12 },
+  googleBtn: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  googleBtnText: { color: '#7C3AED', fontWeight: '800', fontSize: 12 },
   readyBox: {
     flexDirection: 'row',
     gap: 8,

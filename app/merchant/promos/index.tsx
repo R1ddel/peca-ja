@@ -13,8 +13,7 @@ import { useFocusEffect, router } from 'expo-router';
 import { BackHeader } from '@/components/BackHeader';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
-import { getShopByApplicationId } from '@/utils/merchantShop';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import {
   MerchantPromo,
   deletePromo,
@@ -31,12 +30,12 @@ export default function MerchantPromosScreen() {
   const [shopName, setShopName] = useState('');
 
   const refresh = useCallback(async () => {
-    const app = await resolveMerchantApplication(user?.email);
+    const { app, shop } = await resolveOperatorMerchantContext(user?.email);
     if (!app) {
       setPromos([]);
+      setShopName('');
       return;
     }
-    const shop = await getShopByApplicationId(app.id);
     setShopName(shop?.name ?? app.businessName);
     setPromos(await listPromosByApplication(app.id));
   }, [user?.email]);

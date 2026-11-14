@@ -35,7 +35,10 @@ export async function handlePlatformRequest(request: Request): Promise<Response>
       {
         ok: false,
         code: 'SERVER',
-        message: err?.message || 'Erro interno da plataforma.',
+        message:
+          process.env.NODE_ENV === 'production'
+            ? 'Erro interno da plataforma.'
+            : err?.message || 'Erro interno da plataforma.',
       },
       { status: 500 }
     );

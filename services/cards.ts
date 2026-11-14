@@ -131,9 +131,12 @@ export function maskCardLabel(card: SavedCard): string {
 }
 
 export function isCardChargeable(card: SavedCard): boolean {
-  // Cartões de teste oficiais do MP (Visa/Master)
-  if (card.isGhostTest || ['6351', '5682', '3311'].includes(card.last4)) return true;
-  return !!(card.mpCustomerId && card.mpCardId && card.paymentMethodId);
+  return !!(
+    card.mpCustomerId &&
+    card.mpCardId &&
+    card.paymentMethodId &&
+    !String(card.mpCardId).startsWith('test_')
+  );
 }
 
 export async function loadSavedCards(): Promise<SavedCard[]> {
@@ -218,9 +221,18 @@ export async function addSavedCard(input: NewCardInput): Promise<AddCardResult> 
 
   try {
     const base = getApiBaseUrl();
+    const { getPlatformToken } = await import('@/services/platformSession');
+    const platformToken = await getPlatformToken();
+    if (!platformToken) {
+      return { ok: false, error: 'Faça login na conta para cadastrar cartão.' };
+    }
     const res = await fetch(`${base}/api/payments/card/save`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${platformToken}`,
+      },
       body: JSON.stringify({
         number,
         holderName,
@@ -273,55 +285,17 @@ export async function addSavedCard(input: NewCardInput): Promise<AddCardResult> 
   }
 }
 
-/** Cartão de teste oficial do Mercado Pago — Mastercard. CVV: 123 */
-export const GHOST_TEST_CARD = {
-  number: '5031433215406351',
-  holderName: 'APRO',
-  expMonth: '11',
-  expYear: '30',
-  cvv: '123',
-  kind: 'credit' as CardKind,
-  /** CPF oficial de teste do MP */
-  identificationNumber: '12345678909',
-};
-
-/** Cadastra o cartão fantasma de teste no Mercado Pago + cofre local. */
+/** Só existe em desenvolvimento — nunca vai no bundle de produção. */
 export async function registerGhostTestCard(email: string): Promise<AddCardResult> {
+  if (!__DEV__) {
+    return { ok: false, error: 'Cartão de teste indisponível neste ambiente.' };
+  }
   const existing = await loadSavedCards();
-  const already = existing.find(
-    (c) => c.isGhostTest || c.last4 === '6351' || c.last4 === '3311'
-  );
+  const already = existing.find((c) => c.last4 === '6351' || c.last4 === '3311');
   if (already) {
     return { ok: true, card: already };
   }
-
-  // Tenta Mastercard clássico; se falhar, tenta o BIN mais novo do MP
-  const first = await addSavedCard({
-    number: GHOST_TEST_CARD.number,
-    holderName: GHOST_TEST_CARD.holderName,
-    expMonth: GHOST_TEST_CARD.expMonth,
-    expYear: GHOST_TEST_CARD.expYear,
-    cvv: GHOST_TEST_CARD.cvv,
-    kind: GHOST_TEST_CARD.kind,
-    setAsDefault: true,
-    email,
-    identificationNumber: GHOST_TEST_CARD.identificationNumber,
-    isGhostTest: true,
-  });
-  if (first.ok) return first;
-
-  return addSavedCard({
-    number: '5480832801033311',
-    holderName: 'APRO',
-    expMonth: '11',
-    expYear: '30',
-    cvv: '123',
-    kind: 'credit',
-    setAsDefault: true,
-    email,
-    identificationNumber: '12345678909',
-    isGhostTest: true,
-  });
+  return { ok: false, error: 'Use o sandbox do Mercado Pago para cartões de teste.' };
 }
 
 export async function removeSavedCard(cardId: string): Promise<SavedCard[]> {
@@ -356,6 +330,8 @@ export type ChargeSavedCardInput = {
   discount?: number;
   merchantAbsorbsDelivery?: number;
   itemUnits?: number;
+  applicationId?: string;
+  plan?: string;
 };
 
 /** Cobra cartão salvo no Mercado Pago. Pedido só deve confirmar se status = paid. */
@@ -377,10 +353,9 @@ export async function chargeSavedCard(
   }
 
   try {
-    const base = getApiBaseUrl();
-    const res = await fetch(`${base}/api/payments/card/charge`, {
+    const { fetchPaymentsJson } = await import('@/services/paymentsFetch');
+    const hit = await fetchPaymentsJson('/api/payments/card/charge', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         mpCustomerId: opts.card.mpCustomerId,
         mpCardId: opts.card.mpCardId,
@@ -398,14 +373,13 @@ export async function chargeSavedCard(
         merchantAbsorbsDelivery: opts.merchantAbsorbsDelivery,
         itemUnits: opts.itemUnits,
         kind: opts.card.kind,
-        isGhostTest: !!(
-          opts.card.isGhostTest || ['6351', '5682', '3311'].includes(opts.card.last4)
-        ),
-        last4: opts.card.last4,
+        applicationId: opts.applicationId,
+        plan: opts.plan,
       }),
+      timeoutMs: 20_000,
     });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.ok || !data?.charge?.id) {
+    const data = hit?.json;
+    if (!hit || !hit.okHttp || !data?.ok || !data?.charge?.id) {
       return {
         ok: false,
         error: data?.message || 'Cartão recusado ou indisponível.',

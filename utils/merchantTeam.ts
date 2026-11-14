@@ -71,12 +71,6 @@ const LAST_ROLE_KEY = '@pecaja_merchant_last_role_v1';
 const SOFT_UNLOCK_KEY = '@pecaja_merchant_soft_unlock_v1';
 const SOFT_UNLOCK_MS = 8 * 60 * 60 * 1000; // 8h
 
-/**
- * PIN único temporário para todos os painéis (dono, gerente, cozinha, caixa).
- * Trocar depois por PIN individual por operador.
- */
-export const FIXED_PANEL_PIN = '1234';
-
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   owner: 'Dono',
   manager: 'Gerente',
@@ -168,6 +162,14 @@ export function roleAccent(role: StaffRole): string {
 
 export function normalizePin(pin: string): string {
   return pin.replace(/\D/g, '').slice(0, 4);
+}
+
+function newStaffPin(): string {
+  let pin = '';
+  do {
+    pin = String(1000 + Math.floor(Math.random() * 9000));
+  } while (pin === '1234' || pin === '0000');
+  return pin;
 }
 
 export function isValidPin(pin: string): boolean {
@@ -279,8 +281,7 @@ export async function listActiveByRole(
 }
 
 /**
- * Abre o painel da função com o PIN fixo temporário (FIXED_PANEL_PIN).
- * Se ainda não houver operador naquela função, cria um stub local.
+ * Abre o painel da função com o PIN pessoal do operador (sem PIN universal).
  */
 export async function authenticateOperatorByPin(opts: {
   businessId: string;
@@ -294,10 +295,7 @@ export async function authenticateOperatorByPin(opts: {
 > {
   const pin = normalizePin(opts.pin);
   if (!isValidPin(pin)) {
-    return { ok: false, error: 'Digite o PIN de 4 dígitos.' };
-  }
-  if (pin !== FIXED_PANEL_PIN) {
-    return { ok: false, error: `PIN incorreto. Por enquanto use ${FIXED_PANEL_PIN}.` };
+    return { ok: false, error: 'PIN inválido.' };
   }
 
   if (opts.role === 'owner') {
@@ -308,16 +306,14 @@ export async function authenticateOperatorByPin(opts: {
     };
   }
 
-  let candidates = await listActiveByRole(opts.businessId, opts.role);
+  const candidates = await listActiveByRole(opts.businessId, opts.role);
   if (!candidates.length) {
-    const stub = await ensureRoleStub(opts.businessId, opts.role);
-    candidates = [stub];
+    return { ok: false, error: 'Nenhum operador cadastrado nesta função. Peça acesso ao dono.' };
   }
 
-  const found = candidates[0];
-  // Garante PIN fixo no membro (migração de PINs antigos)
-  if (found.pin !== FIXED_PANEL_PIN) {
-    await setMemberPinAllowFixed(opts.businessId, found.id, FIXED_PANEL_PIN);
+  const found = candidates.find((m) => m.pin && normalizePin(m.pin) === pin);
+  if (!found) {
+    return { ok: false, error: 'PIN inválido.' };
   }
 
   const session: StaffSession = {
@@ -346,8 +342,8 @@ async function ensureRoleStub(
     name: `Operador ${STAFF_ROLE_LABEL[role]}`,
     email: `${role}.${businessId.replace(/\W/g, '')}@painel.local`.toLowerCase(),
     role,
-    password: FIXED_PANEL_PIN,
-    pin: FIXED_PANEL_PIN,
+    password: newStaffPin(),
+    pin: newStaffPin(),
     active: true,
     createdAt: new Date().toISOString(),
   };
@@ -543,8 +539,6 @@ export async function ensureOwnerMember(opts: {
     if (!existing.pin || !isValidPin(existing.pin)) {
       const next = {
         ...existing,
-        pin: FIXED_PANEL_PIN,
-        password: existing.password || FIXED_PANEL_PIN,
         active: true,
       };
       await saveMembers(list.map((m) => (m.id === existing.id ? next : m)));
@@ -571,8 +565,8 @@ export async function ensureOwnerMember(opts: {
     name: opts.name.trim() || 'Dono',
     email,
     role: 'owner',
-    pin: FIXED_PANEL_PIN,
-    password: FIXED_PANEL_PIN,
+    pin: '',
+    password: '',
     active: true,
     createdAt: new Date().toISOString(),
   };
@@ -603,18 +597,9 @@ export async function ownerEnterWithPin(opts: {
     email: opts.ownerEmail,
   });
   const pin = normalizePin(opts.pin);
-  if (!isValidPin(pin)) return { ok: false, error: 'Digite o PIN de 4 dígitos.' };
-
-  // 1234 sempre libera o dono e corrige PIN aleatório antigo neste aparelho.
-  if (owner.pin !== pin) {
-    if (pin === FIXED_PANEL_PIN) {
-      await setMemberPinAllowFixed(opts.businessId, owner.id, FIXED_PANEL_PIN);
-      owner = { ...owner, pin: FIXED_PANEL_PIN };
-    } else {
-      return {
-        ok: false,
-        error: `PIN incorreto. O PIN do dono é ${owner.pin || FIXED_PANEL_PIN}.`,
-      };
+  if (owner.pin && isValidPin(owner.pin)) {
+    if (!isValidPin(pin) || owner.pin !== pin) {
+      return { ok: false, error: 'PIN inválido.' };
     }
   }
 
@@ -700,7 +685,7 @@ export async function redeemStaffInvite(opts: {
   const name = opts.name.trim();
   const email = opts.email.trim().toLowerCase();
   const password = opts.password.trim();
-  const pin = FIXED_PANEL_PIN;
+  const pin = normalizePin(opts.pin || '') || newStaffPin();
   if (!name || !email) return { ok: false, error: 'Nome e e-mail são obrigatórios.' };
   if (password.length < 4) {
     return { ok: false, error: 'Senha com no mínimo 4 caracteres.' };
@@ -1085,7 +1070,7 @@ export async function requestStaffAccess(opts: {
   const name = opts.name.trim();
   const email = opts.email.trim().toLowerCase();
   const password = opts.password.trim();
-  const pin = FIXED_PANEL_PIN;
+  const pin = normalizePin(opts.pin || '') || newStaffPin();
   if (!name || !email) return { ok: false, error: 'Nome e e-mail são obrigatórios.' };
   if (password.length < 4) return { ok: false, error: 'Senha com no mínimo 4 caracteres.' };
   if (!email.includes('@')) return { ok: false, error: 'Informe um e-mail válido.' };
@@ -1154,7 +1139,7 @@ export async function approveAccessRequest(
     email: req.email,
     password: req.password,
     role: req.role,
-    pin: FIXED_PANEL_PIN,
+    pin: req.pin || newStaffPin(),
   });
   if (!created.ok) return created;
 
@@ -1261,19 +1246,19 @@ export async function resetStaffPassword(opts: {
   if (password.length < 4) {
     return { ok: false, error: 'Nova senha com no mínimo 4 caracteres.' };
   }
-  if (pin !== FIXED_PANEL_PIN) {
-    return { ok: false, error: `Confirme com o PIN do painel (${FIXED_PANEL_PIN}).` };
-  }
-
   const members = await loadMembers();
   const targets = members.filter((m) => m.active && m.email === email);
   if (!targets.length) {
     return { ok: false, error: 'E-mail não encontrado na equipe.' };
   }
+  const match = targets.find((m) => m.pin && normalizePin(m.pin) === pin);
+  if (!match) {
+    return { ok: false, error: 'PIN inválido.' };
+  }
 
   await saveMembers(
     members.map((m) =>
-      m.active && m.email === email ? { ...m, password, pin: FIXED_PANEL_PIN } : m
+      m.id === match.id ? { ...m, password } : m
     )
   );
   return { ok: true };

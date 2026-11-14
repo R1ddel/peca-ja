@@ -6,6 +6,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MerchantPlan, MERCHANT_PLANS, formatPlanPrice } from '@/constants/plans';
 import { MERCHANT_TERMS_VERSION } from '@/constants/merchantTerms';
 import { DRIVER_TERMS_VERSION } from '@/constants/driverTerms';
+import type { WeeklyHours } from '@/utils/weeklyHours';
+import type { ShopPaymentMethod } from '@/utils/paymentMethods';
+import type { ShopDeliveryMode } from '@/utils/shopDelivery';
+import { getDriverSession, setDriverSession } from '@/utils/driverSession';
+import { getPlatformToken, setPlatformToken } from '@/services/platformSession';
+import {
+  asPlatformToken,
+  asPlatformUser,
+  platformLogin,
+  platformMe,
+  platformRegister,
+  platformSyncDriverApplication,
+} from '@/services/platformClient';
 
 export type PartnerRole = 'merchant' | 'driver';
 /** approved = painel liberado (pagamento + termo ok). */
@@ -33,6 +46,14 @@ export type MerchantApplication = {
   address: string;
   document: string;
   notes?: string;
+  /** Grade semanal informada no cadastro. */
+  weeklyHours?: WeeklyHours;
+  /** Pagamentos que a loja aceita, definidos no cadastro. */
+  acceptedPayments?: ShopPaymentMethod[];
+  /** store = entregador próprio. app = motoboy da Peça Já. */
+  deliveryBy?: ShopDeliveryMode;
+  /** Município de atuação escolhido no cadastro. Ex.: "Mucugê — BA". */
+  city?: string;
   plan?: MerchantPlan;
   planCity?: string;
   paymentStatus?: PaymentStatus;
@@ -223,28 +244,11 @@ export async function submitMerchantApplication(
     (a) => a.role === 'merchant' && a.email.toLowerCase() === email
   ) as MerchantApplication | undefined;
 
-  // Multi-loja: sempre cria uma nova candidatura
   if (!input.allowAdditionalStore && existing) {
-    if (isMerchantPanelUnlocked(existing)) {
-      return { ok: false, error: 'Este e-mail já tem comércio ativo no Peça Já.' };
-    }
-    // Retoma onboarding incompleto
-    await AsyncStorage.setItem(LAST_MERCHANT_KEY, existing.id);
-    const refreshed: MerchantApplication = {
-      ...existing,
-      ownerName: input.ownerName.trim(),
-      phone: input.phone.trim(),
-      businessName: input.businessName.trim(),
-      category: input.category.trim() || existing.category || 'Outro',
-      address: input.address.trim(),
-      document: input.document.trim() || existing.document,
-      notes: input.notes?.trim() || existing.notes,
-      updatedAt: new Date().toISOString(),
+    return {
+      ok: false,
+      error: 'Este e-mail já está cadastrado. Entre com ele para continuar a loja.',
     };
-    const idx = list.findIndex((a) => a.id === existing.id);
-    list[idx] = refreshed;
-    await saveAll(list);
-    return { ok: true, application: refreshed };
   }
 
   const now = new Date().toISOString();
@@ -262,6 +266,10 @@ export async function submitMerchantApplication(
     address: input.address.trim(),
     document: input.document.trim(),
     notes: input.notes?.trim() || undefined,
+    city: input.city?.trim() || undefined,
+    weeklyHours: input.weeklyHours,
+    acceptedPayments: input.acceptedPayments,
+    deliveryBy: input.deliveryBy,
     paymentStatus: 'unpaid',
     termsStatus: 'pending',
   };
@@ -456,8 +464,10 @@ export async function acceptDriverTerms(
   }
 ): Promise<DriverApplication | null> {
   if (!input.signerName.trim()) return null;
+  const current = await getApplicationById(id);
+  const keepApproved = current?.role === 'driver' && current.status === 'approved';
   return patchDriver(id, {
-    status: 'approved',
+    status: keepApproved ? 'approved' : 'pending',
     termsStatus: 'accepted',
     termsVersion: DRIVER_TERMS_VERSION,
     termsAcceptedAt: new Date().toISOString(),
@@ -474,12 +484,61 @@ export async function getApplicationById(id: string): Promise<PartnerApplication
   return sanitizeMerchantPayment(found);
 }
 
+const LOCAL_TEST_MERCHANT_NAMES = new Set(['rap10x']);
+
+function isLocalTestMerchantName(name: string | undefined): boolean {
+  return typeof __DEV__ !== 'undefined' && __DEV__ && LOCAL_TEST_MERCHANT_NAMES.has((name ?? '').trim().toLowerCase());
+}
+
+/** Libera loja de teste neste aparelho, sem cobrança no Mercado Pago. */
+async function grantLocalTestMerchantAccess(
+  app: MerchantApplication
+): Promise<MerchantApplication> {
+  if (!isLocalTestMerchantName(app.businessName)) return app;
+  if (isMerchantPanelUnlocked(app)) return app;
+  const until = new Date();
+  until.setFullYear(until.getFullYear() + 1);
+  const now = new Date().toISOString();
+  const updated = await patchMerchant(app.id, {
+    plan: app.plan ?? 'essencial',
+    paymentStatus: 'paid',
+    paymentId: 'teste-sem-cobranca',
+    paymentPaidAt: now,
+    paymentAmount: 0,
+    planPaidUntil: until.toISOString(),
+    termsStatus: 'accepted',
+    termsVersion: MERCHANT_TERMS_VERSION,
+    termsAcceptedAt: now,
+    termsSignatureMethod: 'aceite_eletronico',
+    termsSignerName: app.ownerName,
+    termsSignerDocument: app.document || 'teste',
+    status: 'approved',
+  });
+  return updated ?? app;
+}
+
+/** Marca Rap10x (e outras lojas de teste) como assinatura ativa, sem cobrar. */
+export async function grantLocalTestMerchants(): Promise<MerchantApplication | null> {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return null;
+  const list = await loadAll();
+  let unlocked: MerchantApplication | null = null;
+  for (const app of list) {
+    if (app.role !== 'merchant') continue;
+    if (!isLocalTestMerchantName(app.businessName)) continue;
+    unlocked = await grantLocalTestMerchantAccess(app);
+  }
+  return unlocked;
+}
+
 /**
  * Limpa “pago” falso (testes antigos / Já paguei) sem vigência real.
  */
 async function sanitizeMerchantPayment(
   app: MerchantApplication
 ): Promise<MerchantApplication> {
+  if (isLocalTestMerchantName(app.businessName)) {
+    return grantLocalTestMerchantAccess(app);
+  }
   if (app.paymentStatus !== 'paid') return app;
   if (app.planPaidUntil) {
     const until = new Date(app.planPaidUntil).getTime();
@@ -530,6 +589,37 @@ export async function abandonMerchantApplication(id: string): Promise<boolean> {
     /* ignore */
   }
   return true;
+}
+
+/** Param de rota Expo (web às vezes manda string[]). */
+export function normalizeRouteParam(
+  value: string | string[] | undefined | null
+): string {
+  if (Array.isArray(value)) return String(value[0] || '').trim();
+  return String(value || '').trim();
+}
+
+/**
+ * Resolve o cadastro da loja para telas de plano/pagamento.
+ * Usa o id da URL, depois e-mail logado, depois última loja deste aparelho.
+ */
+export async function resolveMerchantAppForRoute(
+  paramId?: string | string[] | null,
+  email?: string | null
+): Promise<MerchantApplication | null> {
+  const id = normalizeRouteParam(paramId);
+  if (id) {
+    const byId = await getApplicationById(id);
+    if (byId?.role === 'merchant') {
+      try {
+        await AsyncStorage.setItem(LAST_MERCHANT_KEY, byId.id);
+      } catch {
+        /* ignore */
+      }
+      return sanitizeMerchantPayment(byId);
+    }
+  }
+  return resolveMerchantApplication(email);
 }
 
 export async function resolveMerchantApplication(
@@ -632,15 +722,109 @@ export async function updateDriverApplication(
   return patchDriver(id, cleaned);
 }
 
+/** Garante sessão cloud (token) para puxar aprovação do HQ — re-loga se a sessão caiu. */
+async function ensureDriverCloudToken(app: DriverApplication): Promise<string | null> {
+  const existing = await getPlatformToken();
+  if (existing) {
+    const me = await platformMe(existing);
+    if (me?.ok && asPlatformUser(me)) return existing;
+    await setPlatformToken(null);
+  }
+
+  const password = app.password?.trim();
+  if (!password) return null;
+
+  const loginRes = await platformLogin(app.email, password);
+  const loginToken = loginRes ? asPlatformToken(loginRes) : null;
+  if (loginRes?.ok && loginToken) {
+    await setPlatformToken(loginToken);
+    return loginToken;
+  }
+
+  const reg = await platformRegister({
+    name: app.name,
+    email: app.email,
+    phone: app.phone || '',
+    password,
+    address: app.city || 'A informar',
+  });
+  const regToken = reg ? asPlatformToken(reg) : null;
+  if (reg?.ok && regToken) {
+    await setPlatformToken(regToken);
+    return regToken;
+  }
+
+  // Conta já existe na nuvem mas senha local diverge — tenta login de novo após EXISTS
+  if (reg && !reg.ok && reg.code === 'EXISTS') {
+    const again = await platformLogin(app.email, password);
+    const againToken = again ? asPlatformToken(again) : null;
+    if (again?.ok && againToken) {
+      await setPlatformToken(againToken);
+      return againToken;
+    }
+  }
+  return null;
+}
+
+/**
+ * Busca o status no HQ e grava no aparelho.
+ * Retorna o app atualizado (ou o mesmo se nuvem/offline).
+ */
+export async function pullDriverStatusFromHq(
+  found: DriverApplication
+): Promise<DriverApplication> {
+  if (found.termsStatus !== 'accepted') return found;
+  try {
+    const token = await ensureDriverCloudToken(found);
+    if (!token) return found;
+    const res = await platformSyncDriverApplication(token, {
+      id: found.id,
+      name: found.name,
+      email: found.email,
+      phone: found.phone,
+      city: found.city,
+      document: found.document,
+      vehicle: found.vehicle,
+      termsStatus: found.termsStatus,
+    });
+    const remote = (res as { ok?: boolean; application?: { status?: string; id?: string } } | null)
+      ?.application;
+    const status = remote?.status;
+    if (!res?.ok || (status !== 'pending' && status !== 'approved' && status !== 'rejected')) {
+      return found;
+    }
+    if (found.status === status) return found;
+    const updated = await setPartnerStatus(found.id, status);
+    if (updated?.role === 'driver') {
+      await setDriverSession({
+        applicationId: found.id,
+        email: found.email,
+        loggedAt: new Date().toISOString(),
+      });
+      return updated;
+    }
+    return found;
+  } catch {
+    return found;
+  }
+}
+
 export async function resolveDriverApplication(
   email?: string | null
 ): Promise<DriverApplication | null> {
+  const session = await getDriverSession();
+  if (session?.applicationId) {
+    const bySession = await getApplicationById(session.applicationId);
+    if (bySession?.role === 'driver') return pullDriverStatusFromHq(bySession);
+  }
+
+  const lookupEmail = (session?.email || email || '').trim();
   let found: DriverApplication | null = null;
-  if (email?.trim()) {
-    const byEmail = await findApplicationByEmail(email, 'driver');
+  if (lookupEmail) {
+    const byEmail = await findApplicationByEmail(lookupEmail, 'driver');
     if (byEmail?.role === 'driver') found = byEmail;
   }
-  if (!found) {
+  if (!found && !session) {
     try {
       const id = await AsyncStorage.getItem(LAST_DRIVER_KEY);
       if (id) {
@@ -652,13 +836,7 @@ export async function resolveDriverApplication(
     }
   }
   if (!found) return null;
-
-  // Quem já assinou o termo e ficou “em análise” é liberado (cadastro recente).
-  if (found.termsStatus === 'accepted' && found.status === 'pending') {
-    const approved = await setPartnerStatus(found.id, 'approved');
-    if (approved?.role === 'driver') return approved;
-  }
-  return found;
+  return pullDriverStatusFromHq(found);
 }
 
 export async function setMerchantPlan(
@@ -733,6 +911,18 @@ export async function confirmMerchantPlanPayment(
     paymentMethod: opts?.method,
   });
   if (!updated) return null;
+  try {
+    const { getShopByApplicationId, patchShop } = await import('@/utils/merchantShop');
+    const shop = await getShopByApplicationId(id);
+    if (shop) {
+      await patchShop(id, {
+        planPaidUntil: updated.planPaidUntil,
+        plan: updated.plan || shop.plan,
+      });
+    }
+  } catch {
+    /* a loja ainda não existe */
+  }
   return maybeUnlockMerchant(updated);
 }
 

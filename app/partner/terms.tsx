@@ -57,6 +57,10 @@ export default function PartnerTermsScreen() {
         setSignerName(found.ownerName);
         setSignerDoc(found.document || '');
         const gate = merchantOnboardingGate(found);
+        if (found.paymentId === 'teste-sem-cobranca' && gate === 'ready') {
+          router.replace('/merchant' as any);
+          return;
+        }
         if (gate === 'plan') {
           router.replace({ pathname: '/partner/plans' as any, params: { id } });
         } else if (gate === 'pay') {

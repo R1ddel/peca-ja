@@ -10,6 +10,7 @@ import {
   applyDispatchPatches,
   computeFairDispatchPatchesSync,
   countDeliveriesToday,
+  driverCanTakeCity,
   driverHasActiveJob,
   driverHasOpenOffer,
   getOfferForDriver,
@@ -26,6 +27,7 @@ export {
   DRIVER_OFFER_SECONDS,
   applyDispatchPatches,
   countDeliveriesToday,
+  driverCanTakeCity,
   driverHasActiveJob,
   driverHasOpenOffer,
   getOfferForDriver,
@@ -91,6 +93,7 @@ export async function listApprovedOnlineDrivers(
       phone: app.phone,
       deliveriesToday: countDeliveriesToday(orders, fleetId),
       lastOfferAt: lastOffers[fleetId] ?? 0,
+      city: app.city,
     });
   }
 

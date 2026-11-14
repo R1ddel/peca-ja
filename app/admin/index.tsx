@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { isStaffRole } from '@/services/platformRoles';
 import { theme } from '@/constants/theme';
 
 export default function AdminIndex() {
@@ -12,8 +13,7 @@ export default function AdminIndex() {
 
   useEffect(() => {
     if (isLoading) return;
-    const staff = user?.platformRole === 'ceo' || user?.platformRole === 'ops';
-    if (cloudAuth && staff) {
+    if (cloudAuth && isStaffRole(user?.platformRole)) {
       router.replace('/admin/overview' as any);
     } else {
       router.replace('/admin/login' as any);

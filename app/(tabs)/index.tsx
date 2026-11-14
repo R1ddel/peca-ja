@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
+  Platform,
   View,
   Text,
   StyleSheet,
@@ -18,8 +19,8 @@ import { FloatingCartButton } from '@/components/FloatingCartButton';
 import { FadeInUp } from '@/components/FadeInUp';
 import { PecaJaLogo } from '@/components/PecaJaLogo';
 import { CustomerLiveMap } from '@/components/CustomerLiveMap';
-import { DeliveryTrackingMap } from '@/components/DeliveryTrackingMap';
-import { pickHomeLiveMapOrder, isDriverEnRouteToCustomer } from '@/utils/customerLiveMap';
+import { StoreDeliveryNotice } from '@/components/StoreDeliveryNotice';
+import { pickHomeLiveMapOrder, pickHomeStoreDelivery, pickHomeJustDelivered, isDriverEnRouteToCustomer } from '@/utils/customerLiveMap';
 import {
   HomeFiltersModal,
   countActiveFilters,
@@ -39,9 +40,11 @@ import {
   CustomerChatAlert,
   listCustomerChatAlerts,
 } from '@/services/orderChat';
+import { unseenCouponNoticeCount } from '@/utils/couponNotices';
 import { Business } from '@/types';
 import { OrderAlertBanner } from '@/components/OrderAlertBanner';
 import { useDemoLocation } from '@/hooks/useDemoLocation';
+import { useHomeCatalogLayout } from '@/hooks/useHomeCatalogLayout';
 import { getSimulatedCityLabel } from '@/utils/demoLocation';
 import {
   searchCatalog,
@@ -98,12 +101,24 @@ export default function HomeScreen() {
   } | null>(null);
   const [catalog, setCatalog] = useState<Business[]>(() => getAllBusinesses());
   const [chatAlerts, setChatAlerts] = useState<CustomerChatAlert[]>([]);
+  const [couponNotices, setCouponNotices] = useState(0);
   const { version: demoVersion, cityLabel: demoCity } = useDemoLocation();
+  const { isVitrine } = useHomeCatalogLayout();
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.title = 'Peça Já';
+    }
+  }, []);
 
   const refreshChatAlerts = useCallback(async () => {
-    const list = await listCustomerChatAlerts(myOrders);
+    const [list, coupons] = await Promise.all([
+      listCustomerChatAlerts(myOrders),
+      unseenCouponNoticeCount(user?.id),
+    ]);
     setChatAlerts(list);
-  }, [myOrders]);
+    setCouponNotices(coupons);
+  }, [myOrders, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -142,7 +157,9 @@ export default function HomeScreen() {
 
   async function refreshCatalog() {
     await hydratePartnerShops();
-    const raw = getAllBusinesses();
+    const place = await getUserPlaceDetails().catch(() => null);
+    const label = getSimulatedCityLabel(place?.city);
+    const raw = getAllBusinesses(label === 'sua cidade' ? null : label);
     const withGeo = applyProximityToBusinesses(
       raw,
       userCoords?.latitude,
@@ -215,6 +232,17 @@ export default function HomeScreen() {
     () => pickHomeLiveMapOrder(myOrders, user?.id),
     [myOrders, user?.id]
   );
+  const storeDeliveryOrder = useMemo(
+    () => (liveDeliveryOrder ? null : pickHomeStoreDelivery(myOrders, user?.id)),
+    [liveDeliveryOrder, myOrders, user?.id]
+  );
+  const justDeliveredOrder = useMemo(
+    () =>
+      liveDeliveryOrder || storeDeliveryOrder
+        ? null
+        : pickHomeJustDelivered(myOrders, user?.id),
+    [liveDeliveryOrder, storeDeliveryOrder, myOrders, user?.id]
+  );
 
   const featured = useMemo(
     () => filteredBusinesses.filter((b) => b.plan === 'destaque').slice(0, 12),
@@ -265,6 +293,8 @@ export default function HomeScreen() {
     }));
   }
 
+  const noticeCount = chatAlerts.length + couponNotices;
+
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <OrderAlertBanner />
@@ -276,28 +306,27 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.favShortcut,
-                  chatAlerts.length > 0 && styles.chatBellActive,
+                  noticeCount > 0 && styles.chatBellActive,
                 ]}
-                onPress={openLatestChatAlert}
-                disabled={chatAlerts.length === 0}
+                onPress={() => router.push('/notifications' as any)}
                 accessibilityLabel={
-                  chatAlerts.length > 0
-                    ? `${chatAlerts.length} mensagem(ns) no chat`
-                    : 'Sem mensagens novas no chat'
+                  noticeCount > 0
+                    ? `${noticeCount} avisos, incluindo cupons das lojas`
+                    : 'Notificações e cupons das lojas'
                 }
                 hitSlop={8}
               >
                 <Ionicons
-                  name={chatAlerts.length > 0 ? 'notifications' : 'notifications-outline'}
+                  name={noticeCount > 0 ? 'notifications' : 'notifications-outline'}
                   size={22}
                   color={
-                    chatAlerts.length > 0 ? theme.colors.primary : theme.colors.textMuted
+                    noticeCount > 0 ? theme.colors.primary : theme.colors.textMuted
                   }
                 />
-                {chatAlerts.length > 0 ? (
+                {noticeCount > 0 ? (
                   <View style={styles.chatBadge}>
                     <Text style={styles.chatBadgeText}>
-                      {chatAlerts.length > 9 ? '9+' : String(chatAlerts.length)}
+                      {noticeCount > 9 ? '9+' : String(noticeCount)}
                     </Text>
                   </View>
                 ) : null}
@@ -391,6 +420,7 @@ export default function HomeScreen() {
           </View>
         </FadeInUp>
 
+        {/* Mapa só com pedido ativo (acompanhamento). Sem pedido, some da home. */}
         {liveDeliveryOrder ? (
           <FadeInUp delay={70}>
             <TouchableOpacity
@@ -411,11 +441,33 @@ export default function HomeScreen() {
               </Text>
             ) : null}
           </FadeInUp>
-        ) : (
+        ) : storeDeliveryOrder ? (
           <FadeInUp delay={70}>
-            <DeliveryTrackingMap fallbackName={user?.name?.split(' ')[0] ?? 'Você'} />
+            <StoreDeliveryNotice businessName={storeDeliveryOrder.businessName} />
           </FadeInUp>
-        )}
+        ) : justDeliveredOrder ? (
+          <FadeInUp delay={70}>
+            <TouchableOpacity
+              style={styles.deliveredCard}
+              activeOpacity={0.9}
+              onPress={() =>
+                router.push({
+                  pathname: '/order/[id]' as any,
+                  params: { id: justDeliveredOrder.id },
+                })
+              }
+            >
+              <Ionicons name="checkmark-circle" size={28} color={theme.colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.deliveredTitle}>Pedido entregue</Text>
+                <Text style={styles.deliveredSub}>
+                  {justDeliveredOrder.businessName} · toque para avaliar
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
+            </TouchableOpacity>
+          </FadeInUp>
+        ) : null}
 
         <FadeInUp delay={100}>
           <View style={styles.searchRow}>
@@ -555,11 +607,7 @@ export default function HomeScreen() {
 
         {!isProductSearch ? (
           <FadeInUp delay={140}>
-            <PromoBanner
-              onSelectCategory={(c) => {
-                setSelectedCategory(c);
-              }}
-            />
+            <PromoBanner businesses={catalog} />
           </FadeInUp>
         ) : null}
 
@@ -829,7 +877,11 @@ export default function HomeScreen() {
                   <FadeInUp delay={200}>
                     <View style={styles.sectionHeader}>
                       <Text style={styles.sectionTitle}>Em destaque</Text>
-                      <Text style={styles.sectionCount}>{featured.length}</Text>
+                      {isVitrine ? (
+                        <Text style={styles.seeAllMuted}>{featured.length}</Text>
+                      ) : (
+                        <Text style={styles.sectionCount}>{featured.length}</Text>
+                      )}
                     </View>
                     <ScrollView
                       horizontal
@@ -840,7 +892,7 @@ export default function HomeScreen() {
                         <BusinessCard
                           key={`feat-${listKey}-${business.id}`}
                           business={business}
-                          variant="tile"
+                          variant={isVitrine ? 'featured' : 'tile'}
                           index={index}
                         />
                       ))}
@@ -858,7 +910,11 @@ export default function HomeScreen() {
                         onPress={() => setSelectedCategory(group.category)}
                         activeOpacity={0.7}
                       >
-                        <Text style={styles.seeAll}>Ver grade · {group.items.length}</Text>
+                        <Text style={styles.seeAll}>
+                          {isVitrine
+                            ? `Ver tudo >`
+                            : `Ver grade · ${group.items.length}`}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                     <ScrollView
@@ -870,7 +926,7 @@ export default function HomeScreen() {
                         <BusinessCard
                           key={`cat-${group.category}-${business.id}`}
                           business={business}
-                          variant="tile"
+                          variant={isVitrine ? 'catalog' : 'tile'}
                           index={index}
                         />
                       ))}
@@ -1007,6 +1063,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.primary,
+  },
+  deliveredCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: theme.spacing.md,
+    marginBottom: 12,
+    padding: theme.spacing.md,
+    borderRadius: 16,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  deliveredTitle: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.text,
+  },
+  deliveredSub: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
   },
   liveRouteHint: {
     fontSize: 12,
@@ -1221,6 +1299,12 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.primary,
     fontWeight: theme.fontWeight.semibold,
+  },
+  seeAllMuted: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+    fontWeight: theme.fontWeight.medium,
+    marginTop: 2,
   },
   rail: {
     gap: theme.spacing.sm,

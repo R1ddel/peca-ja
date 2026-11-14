@@ -1,10 +1,10 @@
 ---
-description: Regras críticas do ambiente Peça Já (Expo SDK 54)
+description: Regras críticas do ambiente Peça Já (Expo SDK 57)
 alwaysApply: true
 ---
 
 [CRITICAL ENVIRONMENT RULES - PECA-JA]
-- O projeto deve rodar estritamente no Expo SDK 54 para manter compatibilidade com o Expo Go do usuário.
+- O projeto deve rodar estritamente no Expo SDK 57 para manter compatibilidade com o Expo Go do usuário.
 - É ABSOLUTAMENTE PROIBIDO instalar, importar ou usar a biblioteca 'react-native-reanimated' ou 'react-native-worklets'. Elas causam o erro fatal 'Exception in HostFunction' no motor do celular.
 - É PROIBIDO alterar ou sobrescrever os arquivos 'app/_layout.tsx' e 'app/(tabs)/_layout.tsx' sem autorização expressa.
 - O arquivo 'app/_layout.tsx' deve conter APENAS a estrutura limpa com <Slot />, envolvendo a árvore estritamente com <AuthProvider>, <CartProvider> e <OrdersProvider> (nessa ordem). Sem OrdersProvider o app quebra com 'useOrders deve ser usado dentro de OrdersProvider'.

@@ -107,6 +107,14 @@ export function isPromoRedeemable(p: MerchantPromo, now = Date.now()): boolean {
   return true;
 }
 
+/** Cupons ativos de qualquer loja — visíveis para todos os clientes. */
+export async function listRedeemablePromos(): Promise<MerchantPromo[]> {
+  const list = await loadAll();
+  return list
+    .filter((p) => isPromoRedeemable(p))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export async function listPromosByBusiness(businessId: string): Promise<MerchantPromo[]> {
   const list = await loadAll();
   return list

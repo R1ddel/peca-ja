@@ -1,5 +1,5 @@
 /**
- * Sistema de permissões do Peça Já (Expo Go / SDK 54).
+ * Sistema de permissões do Peça Já (Expo Go / SDK 57).
  * Localização em primeiro plano + notificações locais + câmera/fotos.
  *
  * Push remoto no Android exige development build (não Expo Go) —
@@ -160,7 +160,11 @@ export async function markPermissionsOnboardingDone(): Promise<void> {
 }
 
 export async function openSystemSettings(): Promise<void> {
-  await Linking.openSettings();
+  try {
+    await Linking.openSettings();
+  } catch {
+    /* web / Expo Go sem settings — o chamador mostra o alerta */
+  }
 }
 
 export type UserCoords = {

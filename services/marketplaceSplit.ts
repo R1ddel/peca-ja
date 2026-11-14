@@ -34,6 +34,11 @@ export type OrderSettlement = {
   driverViaLedger: boolean;
   /** Taxa (+ frete retido) cobrada como application_fee no MP. */
   applicationFee: number;
+  /**
+   * Dívida de taxa (pedidos em dinheiro) incluída na application_fee deste Pix/cartão.
+   * Não sai do frete do motoboy.
+   */
+  cashFeeDebtRecovery?: number;
   /** Token OAuth do seller usado na cobrança (nunca expor ao client). */
   usedSellerToken: boolean;
   parties: SettlementParty[];
@@ -191,12 +196,59 @@ export function mpMarketplacePaymentFields(settlement: OrderSettlement): {
   return { application_fee: Number(settlement.applicationFee.toFixed(2)) };
 }
 
+/**
+ * Inclui dívida de taxa (dinheiro) na application_fee do split 1:1.
+ * Cliente paga o mesmo; loja recebe menos; frete do motoboy intacto.
+ */
+export function withCashFeeDebtRecovery(
+  settlement: OrderSettlement,
+  split: PaymentSplit,
+  debt: number
+): OrderSettlement {
+  const owed = roundMoney(Math.max(0, debt));
+  if (owed < 0.01) {
+    return { ...settlement, cashFeeDebtRecovery: 0 };
+  }
+
+  if (settlement.mode !== 'marketplace_split') {
+    // Collector + ledger: a dívida já reduz o saldo sacável; não mexe no MP.
+    return { ...settlement, cashFeeDebtRecovery: 0 };
+  }
+
+  const maxFromMerchant = Math.max(0, roundMoney(split.merchantAmount - 0.01));
+  const feeRoom = Math.max(
+    0,
+    roundMoney(split.customerTotal - settlement.applicationFee - 0.01)
+  );
+  const recovery = roundMoney(Math.min(owed, maxFromMerchant, feeRoom));
+  if (recovery < 0.01) {
+    return { ...settlement, cashFeeDebtRecovery: 0 };
+  }
+
+  return {
+    ...settlement,
+    applicationFee: roundMoney(settlement.applicationFee + recovery),
+    cashFeeDebtRecovery: recovery,
+    parties: settlement.parties.map((p) => {
+      if (p.role === 'merchant') {
+        return { ...p, amount: roundMoney(Math.max(0, p.amount - recovery)) };
+      }
+      if (p.role === 'platform') {
+        return { ...p, amount: roundMoney(p.amount + recovery) };
+      }
+      return p;
+    }),
+    reason: `${settlement.reason} Abateu R$ ${recovery.toFixed(2)} de taxa em dinheiro na application_fee.`,
+  };
+}
+
 /** Metadata segura para o client / pedido (sem tokens). */
 export function publicSettlementMeta(settlement: OrderSettlement): {
   mode: SettlementMode;
   merchantPaidViaMp: boolean;
   driverViaLedger: boolean;
   applicationFee: number;
+  cashFeeDebtRecovery: number;
   reason: string;
 } {
   return {
@@ -204,6 +256,7 @@ export function publicSettlementMeta(settlement: OrderSettlement): {
     merchantPaidViaMp: settlement.merchantPaidViaMp,
     driverViaLedger: settlement.driverViaLedger,
     applicationFee: settlement.applicationFee,
+    cashFeeDebtRecovery: settlement.cashFeeDebtRecovery ?? 0,
     reason: settlement.reason,
   };
 }

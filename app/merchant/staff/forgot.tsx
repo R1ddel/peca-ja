@@ -14,7 +14,6 @@ import { MobileShell } from '@/components/MobileShell';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import {
-  FIXED_PANEL_PIN,
   recoverStaffEmails,
   resetStaffPassword,
   STAFF_ROLE_LABEL,
@@ -91,7 +90,7 @@ export default function StaffForgotScreen() {
               <Ionicons name="help-circle" size={28} color="#fff" />
               <Text style={styles.heroTitle}>Recuperar acesso</Text>
               <Text style={styles.heroSub}>
-                Por enquanto a recuperação é local neste aparelho. Confirme com o PIN do painel
+                Recuperação local neste aparelho. Confirme com o PIN pessoal da conta.
                 (4 dígitos definidos para a equipe).
               </Text>
             </View>
@@ -113,7 +112,7 @@ export default function StaffForgotScreen() {
               <Ionicons name="key-outline" size={22} color={theme.colors.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>Esqueci a senha</Text>
-                <Text style={styles.cardSub}>Redefinir com e-mail + PIN do painel</Text>
+                <Text style={styles.cardSub}>Redefinir com e-mail + PIN pessoal</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -174,7 +173,7 @@ export default function StaffForgotScreen() {
               isPassword
             />
             <Input
-              label="Confirmar com PIN do painel"
+              label="Confirmar com PIN pessoal"
               value={confirmPin}
               onChangeText={(t) => setConfirmPin(t.replace(/\D/g, '').slice(0, 4))}
               placeholder="••••"

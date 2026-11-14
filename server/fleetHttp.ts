@@ -9,6 +9,7 @@ import {
   fleetDecline,
   fleetDriverLocation,
   fleetHeartbeat,
+  fleetIssueDriverSession,
   fleetRelease,
   fleetSync,
   publicDriversMap,
@@ -17,6 +18,7 @@ import {
 } from '@/services/fleetEngine';
 import { fleetPersistenceMode, loadFleetState } from '@/services/fleetStore';
 import { loadPlatformState } from '@/services/platformStore';
+import type { FleetDriverPresence } from '@/services/fleetTypes';
 
 type Body = {
   action?: string;
@@ -40,6 +42,7 @@ type Body = {
   reportId?: string;
   status?: ConductReport['status'];
   adminAction?: 'list' | 'block' | 'unblock' | 'set_report_status';
+  hqMode?: 'real' | 'projection';
   /** Token emitido no heartbeat do entregador. */
   driverToken?: string;
   /** Sessão da plataforma (obrigatória em sync se não houver driverToken). */
@@ -51,22 +54,56 @@ function json(data: unknown, status = 200) {
 }
 
 function sanitizeStateOrders(orders: Order[], fleetId?: string) {
-  return orders.map((o) => sanitizeOrderForFleet(o, fleetId));
+  return orders
+    .filter((o) => !String(o.id || '').startsWith('proj2y_'))
+    .map((o) => sanitizeOrderForFleet(o, fleetId));
+}
+
+function selfDriverMap(
+  drivers: Record<string, FleetDriverPresence>,
+  fleetId: string
+): Record<string, FleetDriverPresence> {
+  const d = drivers[fleetId];
+  if (!d) return {};
+  const { sessionToken: _t, ...rest } = d;
+  return { [fleetId]: rest };
+}
+
+async function platformSessionUserId(token?: string): Promise<string | null> {
+  const tok = String(token || '').trim();
+  if (!tok) return null;
+  const state = await loadPlatformState();
+  const session = state.sessions.find((s) => s.token === tok);
+  if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
+  return session.userId;
+}
+
+async function userMayDriveFleet(userId: string, fleetId: string): Promise<boolean> {
+  const state = await loadPlatformState();
+  const user = state.users.find((u) => u.id === userId);
+  if (!user) return false;
+  const email = user.email.trim().toLowerCase();
+  const apps = (state.applications || []).filter(
+    (a) => a.role === 'driver' && a.status === 'approved'
+  );
+  return apps.some((a) => {
+    const own =
+      a.ownerUserId === userId || a.email.trim().toLowerCase() === email;
+    if (!own) return false;
+    const localId = String((a.raw as { localApplicationId?: string } | undefined)?.localApplicationId || '');
+    const ids = [a.id, `da_${a.id}`, localId, localId ? `da_${localId}` : ''].filter(Boolean);
+    return ids.includes(fleetId);
+  });
 }
 
 export async function handleFleetGet() {
-  const state = await loadFleetState();
+  if (process.env.NODE_ENV === 'production') {
+    return json({ ok: true });
+  }
   return json({
     ok: true,
-    message:
-      'Frota Peça Já. POST action=sync|heartbeat|claim|decline|release|report|admin|location',
+    message: 'Frota Peça Já.',
     persistence: fleetPersistenceMode(),
-    revision: state.revision,
-    updatedAt: state.updatedAt,
-    driversOnline: Object.values(state.drivers).filter((d) => d.online && !d.blocked)
-      .length,
-    orders: state.orders.length,
-    reports: state.reports.length,
   });
 }
 
@@ -119,15 +156,62 @@ export async function handleFleetPost(request: Request) {
         orders: Array.isArray(body.orders) ? body.orders : [],
         runDispatch: body.runDispatch !== false,
       });
+      // Roster completo só no HQ (action=admin). Sync devolve no máximo o próprio motorista.
+      const driversOut = fleetIdHint
+        ? selfDriverMap(state.drivers, fleetIdHint)
+        : {};
       return json({
         ok: true,
         action: 'sync',
         revision: state.revision,
         updatedAt: state.updatedAt,
         orders: sanitizeStateOrders(state.orders, fleetIdHint),
-        drivers: publicDriversMap(state.drivers),
-        reports: state.reports,
+        drivers: driversOut,
         persistence: fleetPersistenceMode(),
+      });
+    }
+
+    if (action === 'driver_auth') {
+      const fleetId = String(body.fleetId || '').trim();
+      if (!fleetId) {
+        return json({ ok: false, code: 'INVALID', message: 'fleetId obrigatório.' }, 400);
+      }
+      const platformTok = String(body.token || '').trim();
+      const authHeader =
+        request.headers.get('authorization') || request.headers.get('Authorization') || '';
+      const bearer =
+        authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+      const userId = await platformSessionUserId(platformTok || bearer);
+      if (!userId) {
+        return json(
+          { ok: false, code: 'AUTH', message: 'Login de entregador obrigatório.' },
+          401
+        );
+      }
+      const allowed = await userMayDriveFleet(userId, fleetId);
+      if (!allowed) {
+        return json(
+          { ok: false, code: 'AUTH', message: 'Cadastro de entregador não aprovado para esta frota.' },
+          403
+        );
+      }
+      const issued = await fleetIssueDriverSession({
+        fleetId,
+        applicationId: String(body.applicationId || fleetId).trim(),
+        name: String(body.name || '').trim() || undefined,
+        phone: String(body.phone || '').trim() || undefined,
+        city: typeof (body as { city?: string }).city === 'string' ? String((body as { city?: string }).city).trim() : undefined,
+      });
+      if (issued.blocked) {
+        return json({ ok: false, code: 'BLOCKED', message: issued.reason || 'Conta bloqueada.' }, 403);
+      }
+      const self = selfDriverMap(issued.state.drivers, fleetId)[fleetId];
+      return json({
+        ok: true,
+        action: 'driver_auth',
+        driverToken: issued.driverToken,
+        driver: self || null,
+        revision: issued.state.revision,
       });
     }
 
@@ -139,16 +223,32 @@ export async function handleFleetPost(request: Request) {
           400
         );
       }
+      const state0 = await loadFleetState();
+      if (!verifyDriverToken(state0, fleetId, driverToken)) {
+        return json(
+          {
+            ok: false,
+            code: 'AUTH',
+            message: 'Heartbeat exige token de entregador.',
+          },
+          403
+        );
+      }
+
       const result = await fleetHeartbeat({
         fleetId,
         applicationId: String(body.applicationId || fleetId).trim(),
-        name: String(body.name || 'Entregador').trim(),
-        phone: String(body.phone || '').trim(),
         online: !!body.online,
         latitude: body.latitude,
         longitude: body.longitude,
         heading: body.heading,
       });
+      if (result.missing) {
+        return json(
+          { ok: false, code: 'AUTH', message: 'Sessão de entregador inválida. Entre de novo.' },
+          403
+        );
+      }
       if (result.blocked) {
         return json(
           {
@@ -159,14 +259,14 @@ export async function handleFleetPost(request: Request) {
           403
         );
       }
+      const self = selfDriverMap(result.state.drivers, fleetId)[fleetId];
       return json({
         ok: true,
         action: 'heartbeat',
         revision: result.state.revision,
         updatedAt: result.state.updatedAt,
         orders: sanitizeStateOrders(result.state.orders, fleetId),
-        drivers: publicDriversMap(result.state.drivers),
-        driverToken: result.driverToken,
+        driver: self || null,
       });
     }
 
@@ -202,15 +302,16 @@ export async function handleFleetPost(request: Request) {
           vehicle: body.vehicle ? String(body.vehicle).trim() : undefined,
         });
         if (!result.ok) {
+          const notFound = /não encontrado/i.test(result.error);
           return json(
             {
               ok: false,
-              code: 'CLAIM_DENIED',
+              code: notFound ? 'NOT_FOUND' : 'CLAIM_DENIED',
               message: result.error,
               orders: sanitizeStateOrders(result.state.orders, fleetId),
               revision: result.state.revision,
             },
-            409
+            notFound ? 404 : 409
           );
         }
         return json({
@@ -247,15 +348,16 @@ export async function handleFleetPost(request: Request) {
 
       const result = await fleetRelease({ orderId, fleetId });
       if (!result.ok) {
+        const notFound = /não encontrado/i.test(result.error);
         return json(
           {
             ok: false,
-            code: 'RELEASE_DENIED',
+            code: notFound ? 'NOT_FOUND' : 'RELEASE_DENIED',
             message: result.error,
             orders: sanitizeStateOrders(result.state.orders, fleetId),
             revision: result.state.revision,
           },
-          409
+          notFound ? 404 : 409
         );
       }
       return json({
@@ -268,12 +370,26 @@ export async function handleFleetPost(request: Request) {
     }
 
     if (action === 'report' && body.report) {
+      const reportFleet =
+        String(body.fleetId || '').trim() ||
+        String((body.report as { reporterId?: string })?.reporterId || '').trim();
+      const state0 = await loadFleetState();
+      const platformTok = String(body.token || '').trim();
+      const okDriver = reportFleet
+        ? verifyDriverToken(state0, reportFleet, driverToken)
+        : false;
+      const okPlatform = !!(await platformSessionUserId(platformTok));
+      if (!okDriver && !okPlatform) {
+        return json(
+          { ok: false, code: 'AUTH', message: 'Sessão obrigatória para denúncia.' },
+          401
+        );
+      }
       const state = await fleetAddReport(body.report);
       return json({
         ok: true,
         action: 'report',
         revision: state.revision,
-        reports: state.reports,
       });
     }
 
@@ -285,11 +401,25 @@ export async function handleFleetPost(request: Request) {
           400
         );
       }
+      const state0 = await loadFleetState();
+      const okDriver = verifyDriverToken(state0, fleetId, driverToken);
+      if (!okDriver) {
+        return json(
+          { ok: false, code: 'AUTH', message: 'Token de entregador obrigatório.' },
+          403
+        );
+      }
       const loc = await fleetDriverLocation(fleetId);
       return json({ ok: true, location: loc });
     }
 
     if (action === 'admin') {
+      const showProjection = body.hqMode !== 'real';
+      if (showProjection) {
+        const { loadPlatformState } = await import('@/services/platformStore');
+        const { ensureProjectionSeeded } = await import('@/services/hqProjectionSeed');
+        await ensureProjectionSeeded(await loadPlatformState());
+      }
       const result = await fleetAdmin({
         pin: String(body.pin || ''),
         token: String(body.token || ''),
@@ -305,13 +435,23 @@ export async function handleFleetPost(request: Request) {
           403
         );
       }
+      const proj = (id: string) => id.startsWith('proj2y_');
+      const realOnly = body.hqMode === 'real';
+      const drivers = publicDriversMap(result.state.drivers);
+      const driversOut: typeof drivers = {};
+      for (const [id, driver] of Object.entries(drivers)) {
+        if (realOnly && proj(id)) continue;
+        driversOut[id] = driver;
+      }
       return json({
         ok: true,
         action: 'admin',
         revision: result.state.revision,
-        orders: result.state.orders,
-        drivers: publicDriversMap(result.state.drivers),
-        reports: result.state.reports,
+        orders: (result.state.orders || []).filter((o) => (realOnly ? !proj(String(o.id || '')) : true)),
+        drivers: driversOut,
+        reports: (result.state.reports || []).filter((r) =>
+          realOnly ? !proj(String(r.id || '')) : true
+        ),
       });
     }
 
@@ -322,7 +462,11 @@ export async function handleFleetPost(request: Request) {
   } catch (err: any) {
     console.error('[fleet]', err?.message || err);
     return json(
-      { ok: false, code: 'SERVER', message: err?.message || 'Erro na frota.' },
+      {
+        ok: false,
+        code: 'SERVER',
+        message: process.env.NODE_ENV === 'production' ? 'Erro na frota.' : err?.message || 'Erro na frota.',
+      },
       500
     );
   }

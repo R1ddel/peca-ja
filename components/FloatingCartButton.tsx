@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   TouchableOpacity,
   View,
@@ -11,19 +11,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useCart } from '@/context/CartContext';
 import { theme } from '@/constants/theme';
-import { formatPrice } from '@/data/businesses';
-import { customerSubtotalFromMerchant, countOrderItemUnits } from '@/constants/pricing';
 
 /** Altura aproximada da tab bar + folga. */
 const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 88 : 72;
 
 export function FloatingCartButton() {
-  const { items, itemCount, subtotal } = useCart();
+  const { itemCount } = useCart();
   const insets = useSafeAreaInsets();
-  const customerSubtotal = useMemo(
-    () => customerSubtotalFromMerchant(subtotal, countOrderItemUnits(items)),
-    [subtotal, items]
-  );
 
   if (itemCount === 0) return null;
 
@@ -31,17 +25,15 @@ export function FloatingCartButton() {
 
   return (
     <TouchableOpacity
-      style={[styles.container, { bottom }]}
-      activeOpacity={0.9}
+      style={[styles.bubble, { bottom }]}
+      activeOpacity={0.88}
       onPress={() => router.push('/cart')}
+      accessibilityLabel={`Ver carrinho, ${itemCount} ${itemCount === 1 ? 'item' : 'itens'}`}
     >
-      <View style={styles.left}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{itemCount}</Text>
-        </View>
-        <Text style={styles.label}>Ver carrinho</Text>
+      <Ionicons name="bag-handle" size={22} color={theme.colors.white} />
+      <View style={styles.badge}>
+        <Text style={styles.badgeText}>{itemCount > 9 ? '9+' : itemCount}</Text>
       </View>
-      <Text style={styles.total}>{formatPrice(customerSubtotal)}</Text>
     </TouchableOpacity>
   );
 }
@@ -62,51 +54,38 @@ export function CartHeaderButton() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bubble: {
     position: 'absolute',
-    left: theme.spacing.md,
-    right: theme.spacing.md,
+    right: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: theme.colors.primary,
-    borderRadius: theme.radius.xl,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: theme.spacing.lg,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
     zIndex: 20,
   },
-  left: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-  },
   badge: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    color: theme.colors.white,
+    color: theme.colors.primary,
     fontWeight: theme.fontWeight.bold,
-    fontSize: theme.fontSize.sm,
-  },
-  label: {
-    color: theme.colors.white,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  total: {
-    color: theme.colors.white,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
+    fontSize: 10,
   },
   headerBtn: {
     marginRight: theme.spacing.md,

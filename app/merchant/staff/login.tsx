@@ -36,7 +36,7 @@ export default function StaffLoginScreen() {
       const saved = await getSavedLogin('staff');
       if (!saved) return;
       setEmail(saved.email);
-      setPassword(saved.password);
+      setPassword('');
       setSaveCredentials(true);
     })();
   }, []);

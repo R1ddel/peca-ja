@@ -1,4 +1,9 @@
 import { isMercadoPagoConfigured, mapMpStatusToPix, mpFetch } from '@/services/mercadopagoServer';
+import {
+  confirmPlanPaymentFromMp,
+  isMerchantPlan,
+  parsePlanApplicationId,
+} from '@/services/planSubscriptionServer';
 
 /**
  * Expo Router passa os segmentos dinâmicos no 2º argumento (ex.: { id }),
@@ -40,6 +45,32 @@ export async function GET(request: Request, routeParams: Record<string, string> 
 
     const status = mapMpStatusToPix(payment.status);
     const tx = payment?.point_of_interaction?.transaction_data ?? {};
+    const meta = payment?.metadata || {};
+    const externalRef = payment.external_reference ?? null;
+    const isSubscription =
+      String(meta.purpose || '') === 'subscription' ||
+      String(meta.business_id || '') === 'pecaja-platform' ||
+      String(externalRef || '').startsWith('plan_');
+
+    // Polling do app também confirma a assinatura (além do webhook).
+    if (isSubscription && status === 'paid') {
+      try {
+        await confirmPlanPaymentFromMp({
+          mpPaymentId: String(payment.id),
+          applicationId:
+            String(meta.application_id || '').trim() || parsePlanApplicationId(externalRef),
+          plan: isMerchantPlan(meta.plan) ? meta.plan : null,
+          amount: Number(payment.transaction_amount || 0),
+          method:
+            String(payment.payment_method_id || '').toLowerCase() === 'pix' ? 'pix' : 'card',
+          externalReference: externalRef,
+          businessName: String(meta.business_name || '') || undefined,
+          paidAt: payment.date_approved || new Date().toISOString(),
+        });
+      } catch (e: any) {
+        console.error('[payments/id] confirmPlanPayment', e?.message || e);
+      }
+    }
 
     return Response.json({
       ok: true,
@@ -56,7 +87,8 @@ export async function GET(request: Request, routeParams: Record<string, string> 
         mpPaymentId: String(payment.id),
         provider: 'mercadopago',
         mpStatus: payment.status,
-        externalReference: payment.external_reference ?? null,
+        externalReference: externalRef,
+        purpose: isSubscription ? 'subscription' : 'order',
       },
     });
   } catch (err: any) {

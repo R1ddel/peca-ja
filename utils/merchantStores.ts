@@ -11,6 +11,7 @@ import {
   confirmMerchantPlanPayment,
   acceptMerchantTerms,
   getApplicationById,
+  grantLocalTestMerchants,
 } from '@/utils/partners';
 import {
   MerchantShop,
@@ -67,18 +68,25 @@ export async function resolveActiveMerchantContext(email?: string | null): Promi
   shop: MerchantShop | null;
   all: MerchantApplication[];
 }> {
-  const all = await listMerchantApplicationsForEmail(email);
+  const testApp = await grantLocalTestMerchants();
+  let all = await listMerchantApplicationsForEmail(email);
+  if (testApp && !all.some((a) => a.id === testApp.id)) {
+    all = [testApp, ...all];
+  }
   if (!all.length) {
-    const app = await resolveMerchantApplication(email);
+    const app = (await resolveMerchantApplication(email)) ?? testApp;
     const shop = app ? await ensureShopFromApplication(app) : null;
     return { app, shop, all: app ? [app] : [] };
   }
 
   const activeId = await getActiveMerchantApplicationId();
-  const app =
+  let app =
     (activeId ? all.find((a) => a.id === activeId) : null) ??
     all.find((a) => isMerchantPanelUnlocked(a)) ??
     all[0];
+  if (testApp && app && !isMerchantPanelUnlocked(app)) {
+    app = testApp;
+  }
 
   if (app) {
     await setActiveMerchantApplicationId(app.id);

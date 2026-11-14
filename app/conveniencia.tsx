@@ -26,6 +26,7 @@ import {
   listConvenienceShops,
 } from '@/utils/convenience';
 import { getUserPlaceDetails } from '@/services/permissions';
+import { getSimulatedCityLabel } from '@/utils/demoLocation';
 import { useDemoLocation } from '@/hooks/useDemoLocation';
 import {
   businessPassesHomeFilters,
@@ -53,7 +54,8 @@ export default function ConvenienciaHubScreen() {
       void (async () => {
         await hydratePartnerShops();
         const place = await getUserPlaceDetails().catch(() => null);
-        const base = getAllBusinesses();
+        const label = getSimulatedCityLabel(place?.city);
+        const base = getAllBusinesses(label === 'sua cidade' ? null : label);
         setCatalog(
           applyProximityToBusinesses(base, place?.latitude, place?.longitude)
         );

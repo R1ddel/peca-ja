@@ -10,6 +10,8 @@ export type RefundApiResult = {
   skipped?: boolean;
   refundId?: string;
   status?: string;
+  /** confirmed | processing | failed — quando o servidor classifica. */
+  refundStatus?: string;
   message?: string;
   code?: string;
   ledgerReversed?: number;
@@ -77,6 +79,7 @@ export async function requestPaymentRefund(input: {
     skipped: !!json.skipped,
     refundId: json.refundId ? String(json.refundId) : undefined,
     status: json.status ? String(json.status) : undefined,
+    refundStatus: json.refundStatus ? String(json.refundStatus) : undefined,
     message: json.message,
     ledgerReversed:
       typeof json.ledgerReversed === 'number' ? json.ledgerReversed : undefined,

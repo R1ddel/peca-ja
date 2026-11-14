@@ -51,13 +51,13 @@ export default function DriverDeliverScreen() {
     return listDriverActive(orders, fleetId).filter((o) => o.status === 'saiu_entrega');
   }, [orders, fleetId]);
 
-  function confirm() {
+  async function confirm() {
     if (!selectedId) {
       Alert.alert('Pedido', 'Selecione a entrega na lista.');
       return;
     }
     setBusy(true);
-    const res = confirmDeliveryByCode(selectedId, code);
+    const res = await confirmDeliveryByCode(selectedId, code);
     setBusy(false);
     if (!res.ok) {
       Alert.alert('Código', res.error);
@@ -65,14 +65,23 @@ export default function DriverDeliverScreen() {
     }
     setCode('');
     setSelectedId(null);
-    Alert.alert(
-      'Entregue!',
-      'Frete creditado. O cliente vai avaliar a loja e você — notas baixas reduzem pontos na Liga.',
-      [
-        { text: 'Ganhos', onPress: () => router.replace('/driver/wallet' as any) },
-        { text: 'OK', onPress: () => router.replace('/driver' as any) },
-      ]
-    );
+    const split = res.order.gatewaySplit;
+    const detail =
+      split?.driverStatus === 'paid' && !split.simulated
+        ? 'O gateway enviou o frete para a sua chave Pix. A parte da loja foi para a chave dela. A taxa ficou na Peça Já.'
+        : split?.driverStatus === 'missing_key'
+          ? 'Entrega confirmada. Cadastre a chave Pix em Ganhos para o gateway enviar o frete.'
+          : split?.driverStatus === 'failed' || split?.simulated
+            ? 'Entrega confirmada. O Pix do frete ainda não saiu de verdade. O valor continua no app até o gateway aceitar.'
+            : res.freightCloud === 'credited'
+              ? 'Frete creditado na carteira. O cliente vai avaliar a loja e você — notas baixas reduzem pontos na Liga.'
+              : res.freightCloud === 'pending'
+                ? 'Entrega confirmada. O frete ainda não entrou na carteira da nuvem. Abra Ganhos daqui a pouco. O cliente já pode avaliar.'
+                : 'Entrega confirmada. O cliente vai avaliar a loja e você — notas baixas reduzem pontos na Liga.';
+    Alert.alert('Entregue!', detail, [
+      { text: 'Ganhos', onPress: () => router.replace('/driver/wallet' as any) },
+      { text: 'OK', onPress: () => router.replace('/driver' as any) },
+    ]);
   }
 
   return (

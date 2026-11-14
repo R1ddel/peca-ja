@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { theme } from '@/constants/theme';
 import { getUserPlaceDetails, type UserPlaceDetails } from '@/services/permissions';
-import { openMapsAt } from '@/utils/openMaps';
+import { openMapsAt, openWazeToPlace } from '@/utils/openMaps';
 import { getAllBusinesses } from '@/data/businesses';
 import { parseDistanceKm } from '@/components/HomeFilters';
 import { merchantCoordsNearCustomer } from '@/services/payment';
@@ -104,6 +104,19 @@ export function DeliveryTrackingMap({ fallbackName = 'Você' }: Props) {
     await openMapsAt(place.latitude, place.longitude, place.city);
   }
 
+  async function openWaze() {
+    if (!place) {
+      await load();
+      return;
+    }
+    await openWazeToPlace({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      label: place.city,
+      address: place.city,
+    });
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -180,13 +193,13 @@ export function DeliveryTrackingMap({ fallbackName = 'Você' }: Props) {
       </TouchableOpacity>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/map' as any)} activeOpacity={0.85}>
-          <Ionicons name="navigate" size={16} color={theme.colors.primary} />
-          <Text style={styles.actionText}>Abrir mapa Peça Já</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={openExternalMaps} activeOpacity={0.85}>
-          <Ionicons name="logo-google" size={16} color={theme.colors.white} />
+          <Ionicons name="navigate" size={16} color={theme.colors.white} />
           <Text style={[styles.actionText, styles.actionTextPrimary]}>Google Maps</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => void openWaze()} activeOpacity={0.85}>
+          <Ionicons name="navigate-circle" size={16} color={theme.colors.primary} />
+          <Text style={styles.actionText}>Waze</Text>
         </TouchableOpacity>
       </View>
 

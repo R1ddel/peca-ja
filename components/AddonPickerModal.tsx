@@ -94,8 +94,6 @@ export function AddonPickerModal({ visible, item, onClose, onConfirm }: Props) {
 
   if (!item) return null;
 
-  const hasAddons = (item.addonGroups?.length ?? 0) > 0;
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -182,7 +180,7 @@ export function AddonPickerModal({ visible, item, onClose, onConfirm }: Props) {
               }}
             >
               <Text style={styles.confirmText}>
-                {hasAddons ? 'Adicionar' : 'Adicionar ao carrinho'} · {formatPrice(unitPrice)}
+                Pedir · {formatPrice(unitPrice)}
               </Text>
             </TouchableOpacity>
           </View>

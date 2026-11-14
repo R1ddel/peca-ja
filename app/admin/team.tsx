@@ -1,45 +1,51 @@
+/**
+ * Equipe HQ — atribuição de papéis (web, CEO only).
+ */
 import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  FlatList,
+  ScrollView,
+  RefreshControl,
   TextInput,
   TouchableOpacity,
-  Alert,
-  RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAdminGate } from '@/app/admin/_useAdminGate';
 import { getPlatformToken } from '@/services/platformSession';
-import {
-  platformAdminListStaff,
-  platformAdminSetStaffRole,
-} from '@/services/platformClient';
-import { theme } from '@/constants/theme';
+import { platformAdminListStaff, platformAdminSetStaffRole } from '@/services/platformClient';
+import { STAFF_ROLES, roleLabel, type PlatformRole } from '@/services/platformRoles';
+import { hq, hqStyles } from '@/app/admin/_ui';
+import { ErrBox, LoadingBlock, PageHeader } from '@/app/admin/_components';
 
 type StaffRow = {
   id: string;
   name: string;
   email: string;
-  platformRole: 'ceo' | 'ops' | null;
+  platformRole: PlatformRole | null;
 };
 
 export default function AdminTeamScreen() {
-  const { ok } = useAdminGate({ ceoOnly: true });
+  const { ok, isLoading: gateLoading, isWeb } = useAdminGate({ permission: 'team' });
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [email, setEmail] = useState('');
+  const [promoteRole, setPromoteRole] = useState<PlatformRole>('ops');
+  const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErr('');
     try {
       const token = await getPlatformToken();
-      if (!token) return;
+      if (!token) {
+        setErr('Sem sessão cloud.');
+        return;
+      }
       const res = await platformAdminListStaff(token);
       if (!res?.ok) {
-        Alert.alert('Equipe', (res as any)?.message || 'Falha.');
+        setErr((res as any)?.message || 'Falha ao listar equipe.');
         return;
       }
       setStaff(((res as any).staff || []) as StaffRow[]);
@@ -54,117 +60,108 @@ export default function AdminTeamScreen() {
     }, [ok, load])
   );
 
-  async function setRole(userId: string, role: 'ops' | 'ceo' | null) {
+  async function setRole(userId: string, role: PlatformRole | null) {
+    setErr('');
+    setMsg('');
     const token = await getPlatformToken();
     if (!token) return;
     const res = await platformAdminSetStaffRole(token, userId, role);
     if (!res?.ok) {
-      Alert.alert('Erro', (res as any)?.message || 'Falha.');
+      setErr((res as any)?.message || 'Falha ao alterar papel.');
       return;
     }
+    setMsg(role ? `Papel → ${roleLabel(role)}` : 'Papel removido.');
     await load();
   }
 
   async function promoteByEmail() {
     const targetEmail = email.trim().toLowerCase();
     if (!targetEmail.includes('@')) {
-      Alert.alert('Equipe', 'Informe um e-mail válido já cadastrado no app.');
+      setErr('Informe um e-mail válido já cadastrado.');
       return;
     }
-    await setRole(`email:${targetEmail}`, 'ops');
+    await setRole(`email:${targetEmail}`, promoteRole);
     setEmail('');
   }
 
+  if (!isWeb || gateLoading) return <LoadingBlock />;
   if (!ok) return null;
 
   return (
-    <View style={styles.screen}>
-      <Text style={styles.h1}>Equipe HQ</Text>
-      <Text style={styles.hint}>
-        CEO vem de PLATFORM_CEO_EMAILS. Promova contas cloud existentes a Ops.
-      </Text>
-      <View style={styles.box}>
+    <ScrollView
+      style={hqStyles.screen}
+      contentContainerStyle={hqStyles.content}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+    >
+      <PageHeader
+        title="Equipe HQ"
+        lead="CEO define papéis · contas cloud existentes"
+      />
+      <ErrBox message={err} />
+      {msg ? (
+        <View style={hqStyles.okBox}>
+          <Text style={hqStyles.okText}>{msg}</Text>
+        </View>
+      ) : null}
+
+      <Text style={hqStyles.h2}>Promover por e-mail</Text>
+      <View style={hqStyles.card}>
         <TextInput
-          style={styles.input}
-          placeholder="E-mail da conta (já cadastrada)"
-          placeholderTextColor="#8b949e"
+          style={[hqStyles.input, { marginBottom: 8 }]}
+          placeholder="E-mail da conta"
+          placeholderTextColor={hq.faint}
           autoCapitalize="none"
           value={email}
           onChangeText={setEmail}
         />
-        <TouchableOpacity style={styles.btn} onPress={() => void promoteByEmail()}>
-          <Text style={styles.btnText}>Promover a Ops</Text>
+        <View style={[hqStyles.row, { marginBottom: 8 }]}>
+          {STAFF_ROLES.map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[hqStyles.btnGhost, promoteRole === r && { borderColor: hq.green }]}
+              onPress={() => setPromoteRole(r)}
+            >
+              <Text style={hqStyles.btnGhostText}>{r}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity style={hqStyles.btn} onPress={() => void promoteByEmail()}>
+          <Text style={hqStyles.btnText}>Atribuir {promoteRole}</Text>
         </TouchableOpacity>
       </View>
-      {loading && staff.length === 0 ? <ActivityIndicator color={theme.colors.primary} /> : null}
-      <FlatList
-        data={staff}
-        keyExtractor={(s) => s.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.title}>
-              {item.name} · {item.platformRole}
+
+      <Text style={hqStyles.h2}>Staff ({staff.length})</Text>
+      {staff.length === 0 && !loading ? (
+        <Text style={hqStyles.empty}>Nenhum membro.</Text>
+      ) : (
+        staff.map((s) => (
+          <View key={s.id} style={hqStyles.card}>
+            <Text style={hqStyles.tableCell}>
+              {s.name} · {roleLabel(s.platformRole)}
             </Text>
-            <Text style={styles.meta}>
-              {item.email} · {item.id}
+            <Text style={hqStyles.lead}>
+              {s.email} · {s.id}
             </Text>
-            <View style={styles.actions}>
-              {item.platformRole !== 'ops' ? (
-                <TouchableOpacity style={styles.mini} onPress={() => void setRole(item.id, 'ops')}>
-                  <Text style={styles.miniText}>Ops</Text>
+            <View style={[hqStyles.row, { marginTop: 8 }]}>
+              {STAFF_ROLES.map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  style={[
+                    hqStyles.btnGhost,
+                    s.platformRole === r && { borderColor: hq.green, backgroundColor: hq.greenDim },
+                  ]}
+                  onPress={() => void setRole(s.id, r)}
+                >
+                  <Text style={hqStyles.btnGhostText}>{r}</Text>
                 </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity style={styles.mini} onPress={() => void setRole(item.id, null)}>
-                <Text style={styles.miniText}>Remover</Text>
+              ))}
+              <TouchableOpacity style={hqStyles.btnGhost} onPress={() => void setRole(s.id, null)}>
+                <Text style={hqStyles.btnGhostText}>remover</Text>
               </TouchableOpacity>
             </View>
           </View>
-        )}
-      />
-    </View>
+        ))
+      )}
+    </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  h1: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 8 },
-  hint: { color: '#8b949e', marginBottom: 12, fontSize: 13 },
-  box: {
-    backgroundColor: '#161b22',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#30363d',
-  },
-  input: {
-    backgroundColor: '#0f1419',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#30363d',
-    padding: 10,
-    color: '#fff',
-    marginBottom: 8,
-  },
-  btn: {
-    backgroundColor: theme.colors.primary,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  btnText: { color: '#fff', fontWeight: '800' },
-  card: {
-    backgroundColor: '#161b22',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#30363d',
-  },
-  title: { color: '#fff', fontWeight: '700' },
-  meta: { color: '#8b949e', fontSize: 12, marginTop: 4 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  mini: { backgroundColor: '#21262d', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
-  miniText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-});

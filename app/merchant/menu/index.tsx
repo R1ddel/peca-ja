@@ -16,14 +16,14 @@ import { BackHeader } from '@/components/BackHeader';
 import { Button } from '@/components/Button';
 import { MobileShell } from '@/components/MobileShell';
 import { useAuth } from '@/context/AuthContext';
-import { resolveMerchantApplication } from '@/utils/partners';
+import { resolveOperatorMerchantContext } from '@/utils/merchantStores';
 import {
   MerchantShop,
   getShopByApplicationId,
   removeMenuItem,
   upsertMenuItem,
 } from '@/utils/merchantShop';
-import { seedPizzaMerchantCatalog } from '@/utils/seedPizzaMerchant';
+import { removeSeededMerchantContent } from '@/utils/seedPizzaMerchant';
 import {
   PLATFORM_FEE_MERCHANT_NOTICE_FOOTER,
 } from '@/constants/pricing';
@@ -35,17 +35,16 @@ export default function MerchantMenuScreen() {
   const { user } = useAuth();
   const [appId, setAppId] = useState<string | null>(null);
   const [shop, setShop] = useState<MerchantShop | null>(null);
-  const [seeding, setSeeding] = useState(false);
-
   const refresh = useCallback(async () => {
-    const app = await resolveMerchantApplication(user?.email);
+    const { app, shop: foundShop } = await resolveOperatorMerchantContext(user?.email);
     if (!app) {
       setAppId(null);
       setShop(null);
       return;
     }
     setAppId(app.id);
-    setShop(await getShopByApplicationId(app.id));
+    const cleaned = await removeSeededMerchantContent(app.id);
+    setShop(cleaned ?? foundShop ?? (await getShopByApplicationId(app.id)));
   }, [user?.email]);
 
   useFocusEffect(
@@ -86,25 +85,6 @@ export default function MerchantMenuScreen() {
     ]);
   }
 
-  async function loadPizzaCatalog() {
-    if (!appId || seeding) return;
-    setSeeding(true);
-    try {
-      const result = await seedPizzaMerchantCatalog(appId);
-      if (!result) {
-        Alert.alert('Cardápio', 'Não foi possível carregar o cardápio.');
-        return;
-      }
-      setShop(result.shop);
-      Alert.alert(
-        'Cardápio atualizado',
-        `${result.menuCount} itens · ${result.promosCreated} promoção(ões) nova(s).\nCupons: PIZZA10, FRETEPIZZA, COMBO15, BEMVINDOPIZZA, NOITE10.`
-      );
-    } finally {
-      setSeeding(false);
-    }
-  }
-
   const activeCount = shop?.menu.filter((m) => m.available !== false).length ?? 0;
   const pausedCount = (shop?.menu.length ?? 0) - activeCount;
 
@@ -123,13 +103,6 @@ export default function MerchantMenuScreen() {
             title="Adicionar item"
             onPress={() => router.push('/merchant/menu/form' as any)}
             size="md"
-          />
-          <Button
-            title={seeding ? 'Carregando…' : 'Cardápio pizzaria'}
-            onPress={() => void loadPizzaCatalog()}
-            size="md"
-            variant="outline"
-            disabled={seeding}
           />
         </View>
       </LinearGradient>

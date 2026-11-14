@@ -2,8 +2,10 @@
 FROM node:22-alpine
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# package-lock do app traz peers opcionais (reanimated/worklets) que quebram `npm ci`
+# e são proibidos neste projeto. A API sobe só com o package.json.
+COPY package.json ./
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY . .
 

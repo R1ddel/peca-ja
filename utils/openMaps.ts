@@ -5,6 +5,67 @@ import { Linking, Platform } from 'react-native';
 
 export type NavPoint = { latitude: number; longitude: number };
 
+function hasPoint(latitude?: number, longitude?: number): latitude is number {
+  return (
+    typeof latitude === 'number' &&
+    typeof longitude === 'number' &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude)
+  );
+}
+
+/** Waze em modo navegar. Usa o ponto exato quando existe; senão, o endereço. */
+export async function openWazeToPlace(place: {
+  address?: string;
+  label?: string;
+  latitude?: number;
+  longitude?: number;
+}): Promise<void> {
+  const address = (place.address || place.label || '').trim();
+  if (hasPoint(place.latitude, place.longitude)) {
+    await openWazeNavigate(
+      { latitude: place.latitude, longitude: place.longitude as number },
+      place.label || address || 'Destino'
+    );
+    return;
+  }
+  const q = encodeURIComponent(address || 'Destino');
+  const wazeApp = `waze://?q=${q}&navigate=yes`;
+  const wazeWeb = `https://waze.com/ul?q=${q}&navigate=yes`;
+  try {
+    const canWaze = await Linking.canOpenURL(wazeApp);
+    if (canWaze) {
+      await Linking.openURL(wazeApp);
+      return;
+    }
+  } catch {
+    /* web */
+  }
+  await Linking.openURL(wazeWeb);
+}
+
+/** Google Maps em navegação, não em busca. */
+export async function openGoogleToPlace(place: {
+  address?: string;
+  label?: string;
+  latitude?: number;
+  longitude?: number;
+}): Promise<void> {
+  if (hasPoint(place.latitude, place.longitude)) {
+    await openGoogleNavigate({
+      latitude: place.latitude,
+      longitude: place.longitude as number,
+    });
+    return;
+  }
+  const q = encodeURIComponent((place.address || place.label || '').trim() || 'Destino');
+  const url =
+    Platform.OS === 'ios'
+      ? `http://maps.apple.com/?daddr=${q}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving&dir_action=navigate`;
+  await Linking.openURL(url);
+}
+
 /** Abre busca de endereço no app de mapas do celular. */
 export async function openMapsAddress(address: string, label = 'Destino'): Promise<void> {
   const q = encodeURIComponent(address.trim() || label);
@@ -58,16 +119,52 @@ export async function openMapsRoute(
   }
 }
 
+/** Formata lat,lng com precisão estável (evita o Waze “pular” de lugar). */
+function wazeLl(to: NavPoint): string {
+  return `${Number(to.latitude).toFixed(6)},${Number(to.longitude).toFixed(6)}`;
+}
+
+/**
+ * Abre o Waze no pin exato (sem navegação forçada).
+ * Usa só o deep link oficial `ul?ll=` — o live-map antigo ignorava lat/lng.
+ */
+export async function openWazeLiveMap(
+  latitude: number,
+  longitude: number,
+  label = 'Peça Já'
+): Promise<void> {
+  const ll = wazeLl({ latitude, longitude });
+  const wazeApp = `waze://?ll=${ll}&zoom=17`;
+  const wazeWeb = `https://waze.com/ul?ll=${encodeURIComponent(ll)}&zoom=17`;
+
+  try {
+    const canWaze = await Linking.canOpenURL(wazeApp);
+    if (canWaze) {
+      await Linking.openURL(wazeApp);
+      return;
+    }
+  } catch {
+    /* web / sem app */
+  }
+
+  try {
+    await Linking.openURL(wazeWeb);
+  } catch {
+    await openMapsAt(latitude, longitude, label);
+  }
+}
+
 /**
  * Abre o Waze em navegação até o ponto exato (lat/lng).
- * Fallback: Google Maps navegação.
+ * Se falhar, cai no Google Maps.
  */
 export async function openWazeNavigate(
   to: NavPoint,
   toLabel = 'Destino'
 ): Promise<'waze' | 'google'> {
-  const wazeApp = `waze://?ll=${to.latitude},${to.longitude}&navigate=yes`;
-  const wazeWeb = `https://waze.com/ul?ll=${to.latitude},${to.longitude}&navigate=yes&zoom=17`;
+  const ll = wazeLl(to);
+  const wazeApp = `waze://?ll=${ll}&navigate=yes`;
+  const wazeWeb = `https://waze.com/ul?ll=${encodeURIComponent(ll)}&navigate=yes&zoom=17`;
 
   try {
     const canWaze = await Linking.canOpenURL(wazeApp);

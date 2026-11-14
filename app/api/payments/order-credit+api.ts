@@ -3,19 +3,21 @@
  * Auth: Bearer sessão da plataforma (cliente do pedido, dono da loja, ou entregador).
  * Alternativa: Bearer === FLEET_SYNC_SECRET | PLATFORM_LEDGER_SECRET (ops).
  *
- * POST { phase: 'paid' | 'delivered' | 'reverse', orderId, order?, token? }
+ * POST { phase: 'paid' | 'delivered' | 'reverse' | 'cash-fee', orderId, order?, token? }
  */
 import type { Order } from '@/types';
 import { loadPlatformState, mutatePlatformState } from '@/services/platformStore';
 import {
   creditDriverForDeliveredOrder,
+  creditMerchantCashFeeRecovery,
   creditMerchantForPaidOrder,
+  debitMerchantCashPlatformFee,
   reverseLedgerCreditsForOrder,
 } from '@/services/orderLedgerServer';
 import { shouldCreditDriverLedger, shouldCreditMerchantLedger } from '@/services/marketplaceSplit';
 
 type Body = {
-  phase?: 'paid' | 'delivered' | 'reverse';
+  phase?: 'paid' | 'delivered' | 'reverse' | 'cash-fee';
   orderId?: string;
   /** Snapshot do pedido (upsert se ainda não estiver no servidor). */
   order?: Order;
@@ -41,12 +43,20 @@ function syncSecretOk(token: string | null): boolean {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Body;
+    const body = (await request.json().catch(() => ({}))) as Body;
+    const token = bearerToken(request, body);
+    if (!token) {
+      return Response.json(
+        { ok: false, code: 'AUTH', message: 'Sessão obrigatória.' },
+        { status: 401 }
+      );
+    }
+
     const phase = body.phase;
     const orderId = String(body.orderId || body.order?.id || '').trim();
-    if (!phase || !['paid', 'delivered', 'reverse'].includes(phase)) {
+    if (!phase || !['paid', 'delivered', 'reverse', 'cash-fee'].includes(phase)) {
       return Response.json(
-        { ok: false, code: 'INVALID', message: 'phase deve ser paid|delivered|reverse.' },
+        { ok: false, code: 'INVALID', message: 'phase deve ser paid|delivered|reverse|cash-fee.' },
         { status: 400 }
       );
     }
@@ -54,14 +64,6 @@ export async function POST(request: Request) {
       return Response.json(
         { ok: false, code: 'INVALID', message: 'orderId obrigatório.' },
         { status: 400 }
-      );
-    }
-
-    const token = bearerToken(request, body);
-    if (!token) {
-      return Response.json(
-        { ok: false, code: 'AUTH', message: 'Sessão obrigatória.' },
-        { status: 401 }
       );
     }
 
@@ -127,7 +129,7 @@ export async function POST(request: Request) {
       const isAssignedDriver =
         !!assignedDriverUserId && assignedDriverUserId === sessionUserId;
 
-      if (phase === 'paid' && !isCustomer && !ownsShop) {
+      if ((phase === 'paid' || phase === 'cash-fee') && !isCustomer && !ownsShop) {
         return Response.json(
           { ok: false, code: 'AUTH', message: 'Sem permissão para creditar este pedido.' },
           { status: 403 }
@@ -159,6 +161,32 @@ export async function POST(request: Request) {
       }
     }
 
+    if (phase === 'cash-fee') {
+      if (order.deliveryBy !== 'store' || order.paymentProvider !== 'offline') {
+        return Response.json({
+          ok: true,
+          phase,
+          orderId,
+          skipped: true,
+          message: 'Taxa de dinheiro só vale para entrega da própria loja.',
+        });
+      }
+      const result = await debitMerchantCashPlatformFee(order);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, code: 'CREDIT', message: result.message || 'Falha ao lançar a taxa.' },
+          { status: 400 }
+        );
+      }
+      return Response.json({
+        ok: true,
+        phase,
+        orderId,
+        skipped: !!result.skipped,
+        entry: result.entry ?? null,
+      });
+    }
+
     if (phase === 'paid') {
       if (!order.paymentConfirmed) {
         return Response.json(
@@ -176,14 +204,18 @@ export async function POST(request: Request) {
           merchantPaidViaMp: order.settlementMerchantPaidViaMp,
         })
       ) {
+        const recovery = await creditMerchantCashFeeRecovery(order);
         return Response.json({
           ok: true,
           phase,
           orderId,
           skipped: true,
-          entry: null,
+          entry: recovery.entry ?? null,
+          cashFeeDebtRecovered: order.cashFeeDebtRecovered ?? 0,
           message:
-            'Lojista já liquidado via marketplace split (MP) — sem crédito no ledger.',
+            (order.cashFeeDebtRecovered ?? 0) > 0
+              ? 'Lojista liquidado no MP; débito de taxa (dinheiro) abatido no ledger.'
+              : 'Lojista já liquidado via marketplace split (MP) — sem crédito no ledger.',
         });
       }
       const result = await creditMerchantForPaidOrder(order);

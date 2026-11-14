@@ -8,8 +8,18 @@ import {
   newSessionToken,
   newId,
   sessionExpiresAt,
+  hashResetToken,
+  tokensMatch,
+  dummyPasswordCheck,
+  newNumericCode,
 } from '@/services/platformCrypto';
-import { mutatePlatformState, loadPlatformState, platformPersistenceMode } from '@/services/platformStore';
+import { sendPasswordResetEmail } from '@/services/resetMail';
+import {
+  mutatePlatformState,
+  loadPlatformState,
+  pingPlatformDb,
+  platformPersistenceMode,
+} from '@/services/platformStore';
 import type {
   AuthPublicUser,
   PlatformAction,
@@ -22,14 +32,7 @@ import type {
 import { mergeOrderFields, mergeOrdersPreferNewer } from '@/utils/orderMerge';
 import { hasOpenOrderCredit } from '@/services/orderLedgerServer';
 import { applyCeoBootstrap } from '@/services/platformRoles';
-import {
-  buildAdminOverview,
-  buildAdminShopDetail,
-  buildAdminShopRows,
-  filterAdminOrders,
-  requireStaffUser,
-  staffDirectory,
-} from '@/services/platformAdmin';
+import { handleAdminPlatformAction } from '@/services/platformAdminHandlers';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -67,10 +70,26 @@ function userOwnsBusiness(state: PlatformState, user: PlatformUser, businessId: 
   );
 }
 
-function sanitizeOrderForUser(order: Order, user: PlatformUser): Order {
+function ownedBusinessIds(state: PlatformState, user: PlatformUser): Set<string> {
+  return new Set(
+    state.shops
+      .filter((s) => s.ownerUserId === user.id)
+      .map((s) => s.businessId)
+  );
+}
+
+function sanitizeOrderForUser(
+  order: Order,
+  user: PlatformUser,
+  shops: Set<string>
+): Order {
   if (orderVisibleToUser(order, user)) return order;
-  // Comércio / outros: sem códigos de verificação do cliente
-  const { pickupCode: _p, deliveryCode: _d, ...rest } = order as Order & {
+  if (shops.has(order.businessId)) {
+    // A loja precisa do código para conferir o que o motoboy mostrar. Não recebe o código do cliente.
+    const { deliveryCode: _d, ...rest } = order;
+    return rest;
+  }
+  const { pickupCode: _p, deliveryCode: _delivery, ...rest } = order as Order & {
     pickupCode?: string;
     deliveryCode?: string;
   };
@@ -79,19 +98,27 @@ function sanitizeOrderForUser(order: Order, user: PlatformUser): Order {
 
 export async function handlePlatformAction(action: PlatformAction): Promise<any> {
   if (action.action === 'health') {
-    return {
-      ok: true,
-      service: 'pecaja-platform',
-      persistence: platformPersistenceMode(),
-      time: new Date().toISOString(),
-    };
+    const persistence = platformPersistenceMode();
+    if (persistence === 'postgres') {
+      try {
+        await pingPlatformDb();
+      } catch {
+        return { ok: false, code: 'DB' };
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      return { ok: false, code: 'DB' };
+    }
+    return { ok: true };
   }
 
   if (action.action === 'register') {
-    const email = action.email.trim().toLowerCase();
-    const password = action.password;
+    const email = String(action.email || '').trim().toLowerCase();
+    const password = String(action.password || '');
+    const name = String(action.name || '').trim();
+    const phone = String(action.phone || '').trim();
+    const address = String(action.address || '').trim();
     if (!email || !password || password.length < 6) {
-      return { ok: false, code: 'VALIDATION', message: 'E-mail e senha (mín. 6) são obrigatórios.' };
+      return { ok: false, code: 'INVALID', message: 'E-mail e senha (mín. 6) são obrigatórios.' };
     }
     return mutatePlatformState((state) => {
       if (state.users.some((u) => u.email === email)) {
@@ -99,18 +126,18 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
           state,
           result: {
             ok: false as const,
-            code: 'EXISTS',
-            message: 'Este e-mail já está cadastrado.',
+            code: 'AUTH',
+            message: 'Não foi possível concluir o cadastro. Tente entrar ou recuperar a senha.',
           },
         };
       }
       const { salt, hash } = hashPassword(password);
       const user: PlatformUser = {
         id: newId('usr'),
-        name: action.name.trim(),
+        name,
         email,
-        phone: action.phone.trim(),
-        address: action.address.trim(),
+        phone,
+        address,
         passwordHash: hash,
         passwordSalt: salt,
         createdAt: new Date().toISOString(),
@@ -134,18 +161,21 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
   }
 
   if (action.action === 'login') {
-    const email = action.email.trim().toLowerCase();
+    const email = String(action.email || '').trim().toLowerCase();
+    const password = String(action.password || '');
     return mutatePlatformState((state) => {
       const found = state.users.find((u) => u.email === email);
-      if (!found || !verifyPassword(action.password, found.passwordSalt, found.passwordHash)) {
-        return {
-          state,
-          result: {
-            ok: false as const,
-            code: 'AUTH',
-            message: found ? 'Senha incorreta.' : 'E-mail não encontrado. Crie uma conta.',
-          },
-        };
+      const AUTH_FAIL = {
+        ok: false as const,
+        code: 'AUTH' as const,
+        message: 'E-mail ou senha inválidos.',
+      };
+      if (!found) {
+        dummyPasswordCheck(password);
+        return { state, result: AUTH_FAIL };
+      }
+      if (!verifyPassword(password, found.passwordSalt, found.passwordHash)) {
+        return { state, result: AUTH_FAIL };
       }
       const boosted = applyCeoBootstrap(found);
       const users =
@@ -202,95 +232,94 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
   }
 
   if (action.action === 'request_password_reset') {
-    const email = action.email.trim().toLowerCase();
-    if (!email) {
-      return { ok: false, code: 'VALIDATION', message: 'Informe o e-mail.' };
+    const RESET_GENERIC = {
+      ok: true as const,
+      message: 'Se a conta existir, enviaremos as instruções.',
+    };
+    const email = String(action.email || '').trim().toLowerCase();
+    if (!email.includes('@')) {
+      return RESET_GENERIC;
     }
-    return mutatePlatformState((state) => {
+    const token = newNumericCode(8);
+    const tokenHash = hashResetToken(token);
+    const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    let shouldSend = false;
+    await mutatePlatformState((state) => {
       const found = state.users.find((u) => u.email === email);
-      // Resposta uniforme (não vaza se o e-mail existe)
       if (!found) {
-        return {
-          state,
-          result: {
-            ok: true as const,
-            exists: false,
-            message: 'E-mail não encontrado na nuvem.',
-          },
-        };
+        dummyPasswordCheck(token);
+        return { state, result: RESET_GENERIC };
       }
-      const token = newSessionToken().slice(0, 8).toUpperCase();
-      const expiresAt = new Date(Date.now() + 20 * 60_000).toISOString();
+      shouldSend = true;
       const passwordResets = [
         ...(state.passwordResets || []).filter((r) => r.email !== email),
-        { email, token, expiresAt },
+        { email, tokenHash, expiresAt, attempts: 0 },
       ];
-      const result: Record<string, unknown> = {
-        ok: true as const,
-        exists: true,
-        message: 'Código de recuperação gerado.',
-      };
-      // Piloto sem SMTP: devolve o código no JSON (ligar e-mail depois).
-      // Desligue com EXPOSE_PASSWORD_RESET_CODE=0 quando tiver envio real.
-      const exposeCode = process.env.EXPOSE_PASSWORD_RESET_CODE !== '0';
-      if (exposeCode) {
-        result.devResetToken = token;
-        result.resetToken = token;
-      }
       return {
         state: { ...state, passwordResets },
-        result,
+        result: RESET_GENERIC,
       };
     });
+    if (shouldSend) {
+      try {
+        await sendPasswordResetEmail(email, token);
+      } catch (err) {
+        console.error('[reset] envio falhou', (err as { message?: string })?.message);
+      }
+    }
+    return RESET_GENERIC;
   }
 
   if (action.action === 'reset_password') {
-    const email = action.email.trim().toLowerCase();
-    const resetToken = String(action.resetToken || '').trim().toUpperCase();
-    if (action.newPassword.length < 6) {
-      return { ok: false, code: 'VALIDATION', message: 'A nova senha deve ter pelo menos 6 caracteres.' };
+    const email = String(action.email || '').trim().toLowerCase();
+    const resetToken = String(action.resetToken || '').trim();
+    const newPassword = String(action.newPassword || '');
+    const AUTH_FAIL = {
+      ok: false as const,
+      code: 'INVALID' as const,
+      message: 'Código inválido ou expirado. Solicite um novo.',
+    };
+    if (newPassword.length < 6) {
+      return { ok: false, code: 'INVALID', message: 'A nova senha deve ter pelo menos 6 caracteres.' };
     }
     if (!resetToken) {
-      return {
-        ok: false,
-        code: 'VALIDATION',
-        message: 'Informe o código de recuperação enviado por e-mail.',
-      };
+      return AUTH_FAIL;
     }
+    const tokenHash = hashResetToken(resetToken);
     return mutatePlatformState((state) => {
-      const reset = (state.passwordResets || []).find(
-        (r) => r.email === email && r.token.toUpperCase() === resetToken
-      );
-      if (!reset || new Date(reset.expiresAt).getTime() < Date.now()) {
-        return {
-          state,
-          result: {
-            ok: false as const,
-            code: 'AUTH',
-            message: 'Código inválido ou expirado. Solicite um novo.',
-          },
-        };
+      const list = state.passwordResets || [];
+      const idxReset = list.findIndex((r) => r.email === email && r.tokenHash);
+      const reset = list[idxReset];
+      if (
+        !reset ||
+        !reset.tokenHash ||
+        reset.usedAt ||
+        new Date(reset.expiresAt).getTime() < Date.now() ||
+        (reset.attempts || 0) >= 5 ||
+        !tokensMatch(reset.tokenHash, tokenHash)
+      ) {
+        dummyPasswordCheck(resetToken);
+        if (reset && idxReset >= 0) {
+          const next = [...list];
+          next[idxReset] = { ...reset, attempts: (reset.attempts || 0) + 1 };
+          return { state: { ...state, passwordResets: next }, result: AUTH_FAIL };
+        }
+        return { state, result: AUTH_FAIL };
       }
       const idx = state.users.findIndex((u) => u.email === email);
       if (idx < 0) {
-        return {
-          state,
-          result: {
-            ok: false as const,
-            code: 'NOT_FOUND',
-            message: 'Não encontramos uma conta com este e-mail.',
-          },
-        };
+        return { state, result: AUTH_FAIL };
       }
-      const { salt, hash } = hashPassword(action.newPassword);
+      const { salt, hash } = hashPassword(newPassword);
       const users = [...state.users];
       users[idx] = { ...users[idx], passwordHash: hash, passwordSalt: salt };
+      const used = { ...reset, usedAt: new Date().toISOString(), attempts: (reset.attempts || 0) + 1 };
       return {
         state: {
           ...state,
           users,
           sessions: state.sessions.filter((s) => s.userId !== users[idx].id),
-          passwordResets: (state.passwordResets || []).filter((r) => r.email !== email),
+          passwordResets: list.map((r, i) => (i === idxReset ? used : r)),
         },
         result: { ok: true as const },
       };
@@ -343,9 +372,9 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
       }
       list = state.orders
         .filter((o) => o.businessId === action.businessId)
-        .map((o) => sanitizeOrderForUser(o, user));
+        .map((o) => sanitizeOrderForUser(o, user, ownedBusinessIds(state, user)));
     } else {
-      list = list.map((o) => sanitizeOrderForUser(o, user));
+      list = list.map((o) => sanitizeOrderForUser(o, user, ownedBusinessIds(state, user)));
     }
     return { ok: true, orders: list, revision: state.revision };
   }
@@ -362,7 +391,7 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (!allowed) {
       return { ok: false, code: 'AUTH', message: 'Sem permissão para este pedido.' };
     }
-    return { ok: true, order: sanitizeOrderForUser(order, user) };
+    return { ok: true, order: sanitizeOrderForUser(order, user, ownedBusinessIds(state, user)) };
   }
 
   if (action.action === 'upsert_order') {
@@ -454,7 +483,7 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         state: { ...state, orders },
         result: {
           ok: true as const,
-          orders: orders.map((o) => sanitizeOrderForUser(o, user)),
+          orders: orders.map((o) => sanitizeOrderForUser(o, user, ownedBusinessIds(state, user))),
           revision: state.revision + 1,
         },
       };
@@ -464,7 +493,9 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
   if (action.action === 'list_shops') {
     const state = await loadPlatformState();
     const shops = (state.shops || [])
+      .filter((s) => !String(s.businessId || '').startsWith('proj2y_'))
       .filter((s) => !s.suspended)
+      .filter((s) => !/recheck|\bteste\b/i.test(String(s.name || s.businessId || '')))
       .map((s) => {
         const { mpSellerAccessToken: _t, ...rest } = s;
         return rest;
@@ -638,19 +669,29 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
   }
 
   if (action.action === 'ticket_create') {
+    const state0 = await loadPlatformState();
+    const account = requireUser(state0, action.token);
+    if (!account) {
+      return { ok: false, code: 'AUTH', message: 'Faça login para abrir um chamado.' };
+    }
+    const subject = String(action.subject || '').trim();
+    const body = String(action.body || '').trim();
+    if (subject.length < 3 || body.length < 3) {
+      return { ok: false, code: 'VALIDATION', message: 'Descreva o problema.' };
+    }
     return mutatePlatformState((state) => {
       const now = new Date().toISOString();
       const ticket: SupportTicket = {
         id: newId('tkt'),
-        userId: action.userId,
-        email: action.email.trim().toLowerCase(),
-        subject: action.subject.trim(),
-        body: action.body.trim(),
+        userId: account.id,
+        email: account.email.trim().toLowerCase(),
+        subject,
+        body,
         status: 'open',
         orderId: action.orderId,
         createdAt: now,
         updatedAt: now,
-        messages: [{ at: now, from: 'user', text: action.body.trim() }],
+        messages: [{ at: now, from: 'user', text: body }],
       };
       return {
         state: { ...state, tickets: [ticket, ...state.tickets] },
@@ -664,14 +705,17 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (supportPinOk(action.pin)) {
       return { ok: true, tickets: state.tickets };
     }
-    if (action.email) {
-      const email = action.email.trim().toLowerCase();
-      return {
-        ok: true,
-        tickets: state.tickets.filter((t) => t.email === email),
-      };
+    const account = requireUser(state, action.token);
+    if (!account) {
+      return { ok: false, code: 'AUTH', message: 'Faça login para ver seus chamados.' };
     }
-    return { ok: false, code: 'AUTH', message: 'PIN ou e-mail necessário.' };
+    const email = account.email.trim().toLowerCase();
+    return {
+      ok: true,
+      tickets: state.tickets.filter(
+        (t) => t.email === email || t.userId === account.id
+      ),
+    };
   }
 
   if (action.action === 'ticket_update') {
@@ -782,222 +826,93 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     return { ok: true, chats: filtered };
   }
 
-  // —— Painel HQ (/admin) ——
-  if (action.action === 'admin_overview') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    return { ok: true, overview: buildAdminOverview(state) };
-  }
-
-  if (action.action === 'admin_list_shops') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    return { ok: true, shops: buildAdminShopRows(state) };
-  }
-
-  if (action.action === 'admin_shop_detail') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    const businessId = String(action.businessId || '').trim();
-    const detail = buildAdminShopDetail(state, businessId);
-    if (!detail) return { ok: false, code: 'NOT_FOUND', message: 'Loja não encontrada.' };
-    return { ok: true, ...detail };
-  }
-
-  if (action.action === 'admin_list_orders') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    const orders = filterAdminOrders(state, {
-      businessId: action.businessId,
-      status: action.status,
-      sinceDays: action.sinceDays,
-    });
-    return { ok: true, orders };
-  }
-
-  if (action.action === 'admin_set_shop_status') {
+  if (action.action === 'sync_driver_application') {
     const state0 = await loadPlatformState();
     const user = requireUser(state0, action.token);
-    const gate = requireStaffUser(user, 'ceo');
-    if (!gate.ok) return gate;
-    const businessId = String(action.businessId || '').trim();
-    if (!businessId) {
-      return { ok: false, code: 'VALIDATION', message: 'businessId obrigatório.' };
+    if (!user) return { ok: false, code: 'AUTH', message: 'Sessão inválida ou expirada.' };
+    const input = action.application;
+    if (!input?.id || !input.email?.trim() || !input.name?.trim()) {
+      return { ok: false, code: 'VALIDATION', message: 'Cadastro de entregador incompleto.' };
+    }
+    const emailKey = user.email.trim().toLowerCase();
+    if (input.email.trim().toLowerCase() !== emailKey) {
+      return { ok: false, code: 'AUTH', message: 'Só dá para enviar o próprio cadastro.' };
     }
     return mutatePlatformState((state) => {
-      const idx = state.shops.findIndex((s) => s.businessId === businessId);
+      const now = new Date().toISOString();
+      const apps = state.applications || [];
+      // 1) id local  2) mesmo e-mail (prioriza aprovado — HQ pode ter aprovado outro id)
+      let idx = apps.findIndex((a) => a.id === input.id);
       if (idx < 0) {
+        const sameEmail = apps
+          .map((a, i) => ({ a, i }))
+          .filter(
+            ({ a }) =>
+              a.role === 'driver' && a.email.trim().toLowerCase() === emailKey
+          );
+        const preferred =
+          sameEmail.find(({ a }) => a.status === 'approved') ||
+          sameEmail.find(({ a }) => a.status === 'pending') ||
+          sameEmail[0];
+        idx = preferred ? preferred.i : -1;
+      }
+      const prev = idx >= 0 ? apps[idx] : null;
+      if (prev && prev.email.trim().toLowerCase() !== emailKey) {
         return {
           state,
-          result: { ok: false as const, code: 'NOT_FOUND', message: 'Loja não encontrada.' },
+          result: { ok: false as const, code: 'AUTH', message: 'Este cadastro é de outra conta.' },
         };
       }
-      const shop = state.shops[idx];
-      const suspend = action.status === 'suspended';
+      // Nunca rebaixa approved/rejected do HQ com um sync do celular
+      const kept =
+        prev?.status === 'approved' || prev?.status === 'rejected'
+          ? prev.status
+          : prev?.status || 'pending';
+      const canonicalId = prev?.id || input.id;
       const next = {
-        ...shop,
-        suspended: suspend,
-        suspendedAt: suspend ? new Date().toISOString() : undefined,
-        suspendedReason: suspend
-          ? String(action.reason || 'Suspensa pelo HQ Peça Já').trim()
-          : undefined,
-        updatedAt: new Date().toISOString(),
-      };
-      const shops = state.shops.map((s, i) => (i === idx ? next : s));
-      return {
-        state: { ...state, shops },
-        result: { ok: true as const, shop: next },
-      };
-    });
-  }
-
-  if (action.action === 'admin_list_staff') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ceo');
-    if (!gate.ok) return gate;
-    return { ok: true, staff: staffDirectory(state) };
-  }
-
-  if (action.action === 'admin_set_staff_role') {
-    const state0 = await loadPlatformState();
-    const actor = requireUser(state0, action.token);
-    const gate = requireStaffUser(actor, 'ceo');
-    if (!gate.ok) return gate;
-    const userId = String(action.userId || '').trim();
-    const role = action.role;
-    if (!userId) {
-      return { ok: false, code: 'VALIDATION', message: 'userId obrigatório.' };
-    }
-    if (role !== null && role !== 'ops' && role !== 'ceo') {
-      return { ok: false, code: 'VALIDATION', message: 'Papel inválido.' };
-    }
-    return mutatePlatformState((state) => {
-      let idx = state.users.findIndex((u) => u.id === userId);
-      if (idx < 0 && userId.includes('@')) {
-        idx = state.users.findIndex((u) => u.email === userId.toLowerCase());
-      }
-      if (idx < 0 && userId.startsWith('email:')) {
-        const em = userId.slice(6).toLowerCase();
-        idx = state.users.findIndex((u) => u.email === em);
-      }
-      if (idx < 0) {
-        return {
-          state,
-          result: {
-            ok: false as const,
-            code: 'NOT_FOUND',
-            message:
-              'Usuário não encontrado. A pessoa precisa criar conta/login no app antes de ser promovida.',
-          },
-        };
-      }
-      const target = state.users[idx];
-      if (target.id === actor!.id && role !== 'ceo') {
-        return {
-          state,
-          result: {
-            ok: false as const,
-            code: 'FORBIDDEN',
-            message: 'Você não pode remover o próprio papel de CEO.',
-          },
-        };
-      }
-      const users = state.users.map((u, i) =>
-        i === idx ? { ...u, platformRole: role } : u
-      );
-      return {
-        state: { ...state, users },
-        result: {
-          ok: true as const,
-          user: publicUser(users[idx]),
+        id: canonicalId,
+        role: 'driver' as const,
+        status: kept,
+        city: input.city?.trim() || prev?.city,
+        name: input.name.trim(),
+        email: emailKey,
+        phone: input.phone?.trim() || prev?.phone || '',
+        document: input.document?.replace(/\D/g, '') || prev?.document,
+        notes: prev?.notes,
+        ownerUserId: user.id,
+        assigneeUserId: prev?.assigneeUserId,
+        followUpAt: prev?.followUpAt,
+        tags: prev?.tags,
+        timeline: prev?.timeline || [
+          { at: now, text: 'Termo assinado. Aguardando a equipe.', actorId: user.id },
+        ],
+        createdAt: prev?.createdAt || now,
+        updatedAt: now,
+        raw: {
+          ...(prev?.raw || {}),
+          termsStatus: input.termsStatus || 'accepted',
+          vehicle: input.vehicle || prev?.raw?.vehicle,
+          localApplicationId: input.id,
         },
       };
-    });
-  }
-
-  if (action.action === 'admin_ticket_list') {
-    const state = await loadPlatformState();
-    const user = requireUser(state, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    const tickets = [...(state.tickets || [])].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-    return { ok: true, tickets };
-  }
-
-  if (action.action === 'admin_ticket_update') {
-    const state0 = await loadPlatformState();
-    const user = requireUser(state0, action.token);
-    const gate = requireStaffUser(user, 'ops');
-    if (!gate.ok) return gate;
-    const id = String(action.id || '').trim();
-    if (!id) return { ok: false, code: 'VALIDATION', message: 'id obrigatório.' };
-    return mutatePlatformState((state) => {
-      const idx = state.tickets.findIndex((t) => t.id === id);
-      if (idx < 0) {
-        return {
-          state,
-          result: { ok: false as const, code: 'NOT_FOUND', message: 'Ticket não encontrado.' },
-        };
-      }
-      const prev = state.tickets[idx];
-      const now = new Date().toISOString();
-      const messages = [...(prev.messages || [])];
-      const reply = String(action.reply || '').trim();
-      if (reply) {
-        messages.push({ at: now, from: 'support', text: reply });
-      }
-      const next = {
-        ...prev,
-        status: action.status || prev.status,
-        messages,
-        updatedAt: now,
-      };
-      const tickets = state.tickets.map((t, i) => (i === idx ? next : t));
+      const applications =
+        idx >= 0
+          ? apps.map((a, i) => (i === idx ? next : a))
+          : [next, ...apps];
       return {
-        state: { ...state, tickets },
-        result: { ok: true as const, ticket: next },
+        state: { ...state, applications },
+        result: { ok: true as const, application: next },
       };
     });
   }
 
-  if (action.action === 'admin_claim_ceo') {
-    const state0 = await loadPlatformState();
-    const user = requireUser(state0, action.token);
-    if (!user) {
-      return { ok: false, code: 'AUTH', message: 'Faça login na plataforma antes.' };
-    }
-    const expected = process.env.SUPPORT_PIN?.trim();
-    const pin = String(action.supportPin || '').trim();
-    if (!expected || !pin || pin !== expected) {
-      return { ok: false, code: 'AUTH', message: 'PIN de suporte inválido.' };
-    }
-    return mutatePlatformState((state) => {
-      const idx = state.users.findIndex((u) => u.id === user!.id);
-      if (idx < 0) {
-        return {
-          state,
-          result: { ok: false as const, code: 'NOT_FOUND', message: 'Usuário não encontrado.' },
-        };
-      }
-      const users = state.users.map((u, i) =>
-        i === idx ? { ...u, platformRole: 'ceo' as const } : u
-      );
-      return {
-        state: { ...state, users },
-        result: { ok: true as const, user: publicUser(users[idx]) },
-      };
+  // —— Painel HQ / Command Center (/admin) ——
+  {
+    const adminResult = await handleAdminPlatformAction(action, {
+      requireUser,
+      publicUser,
     });
+    if (adminResult) return adminResult;
   }
 
   return { ok: false, code: 'UNKNOWN', message: 'Ação não reconhecida.' };

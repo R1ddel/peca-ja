@@ -91,6 +91,15 @@ async function postOrderCredit(body: Record<string, unknown>): Promise<OrderCred
   return last;
 }
 
+/** Após pedido em dinheiro da própria loja: debita a taxa Peça Já do saldo dela. */
+export async function requestMerchantCashFeeDebit(order: Order): Promise<OrderCreditResult> {
+  return postOrderCredit({
+    phase: 'cash-fee',
+    orderId: order.id,
+    order,
+  });
+}
+
 /** Após Pix confirmado / pedido pago criado. */
 export async function requestMerchantLedgerCredit(order: Order): Promise<OrderCreditResult> {
   return postOrderCredit({
@@ -116,4 +125,63 @@ export async function requestLedgerReverse(order: Order): Promise<OrderCreditRes
     orderId: order.id,
     order,
   });
+}
+
+async function postPayments(path: string, body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  const token = await getPlatformToken();
+  if (!token) return { ok: false, code: 'AUTH', message: 'Faça login para sincronizar a carteira.' };
+  const bases = [getFleetBaseUrl(), getApiBaseUrl()].filter((v, i, a) => a.indexOf(v) === i);
+  for (const base of bases) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...body, token }),
+      });
+      const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (json) return json;
+    } catch {
+      /* próxima base */
+    }
+  }
+  return { ok: false, code: 'NETWORK', message: 'Sem conexão com o gateway.' };
+}
+
+/** Grava a chave Pix no servidor para o repasse automático. */
+export async function syncPayoutProfile(profile: {
+  ownerType: 'merchant' | 'driver';
+  ownerId: string;
+  pixKey: string;
+  pixKeyType: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  holderName: string;
+  document: string;
+}): Promise<void> {
+  await postPayments('/api/payments/payout-profile', profile);
+}
+
+/** Reparte loja, entregador e taxa Peça Já depois da entrega confirmada. */
+export async function requestGatewaySplit(order: Order): Promise<Order['gatewaySplit'] | null> {
+  const json = await postPayments('/api/payments/split-release', {
+    orderId: order.id,
+    order,
+  });
+  if (!json) return null;
+  const merchantStatus = json.merchantStatus;
+  const driverStatus = json.driverStatus;
+  const allowed = ['paid', 'pending', 'failed', 'skipped', 'missing_key'];
+  if (typeof merchantStatus !== 'string' || !allowed.includes(merchantStatus)) return null;
+  if (typeof driverStatus !== 'string' || !allowed.includes(driverStatus)) return null;
+  return {
+    at: new Date().toISOString(),
+    merchantStatus: merchantStatus as NonNullable<Order['gatewaySplit']>['merchantStatus'],
+    driverStatus: driverStatus as NonNullable<Order['gatewaySplit']>['driverStatus'],
+    merchantAmount: typeof json.merchantAmount === 'number' ? json.merchantAmount : undefined,
+    driverAmount: typeof json.driverAmount === 'number' ? json.driverAmount : undefined,
+    simulated: json.simulated === true,
+    message: typeof json.message === 'string' ? json.message : undefined,
+  };
 }

@@ -1,45 +1,62 @@
+/**
+ * Pedidos globais — Command Center (web).
+ */
 import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  FlatList,
+  ScrollView,
   RefreshControl,
-  ActivityIndicator,
   TouchableOpacity,
+  TextInput,
+  StyleSheet,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAdminGate } from '@/app/admin/_useAdminGate';
 import { getPlatformToken } from '@/services/platformSession';
-import { platformAdminListOrders } from '@/services/platformClient';
+import { platformAdminListOrders, platformAdminOrderDetail } from '@/services/platformClient';
 import { formatPrice } from '@/data/businesses';
 import { formatOrderTime } from '@/utils/datetime';
 import type { Order } from '@/types';
-import { theme } from '@/constants/theme';
+import { hq, hqStyles } from '@/app/admin/_ui';
+import { ErrBox, LoadingBlock, PageHeader, StatusPill } from '@/app/admin/_components';
+import { AdminDrawer } from '@/app/admin/_drawer';
 
 export default function AdminOrdersScreen() {
-  const { ok } = useAdminGate();
+  const { ok, isLoading: gateLoading, isWeb } = useAdminGate();
+  const params = useLocalSearchParams<{ sinceDays?: string; q?: string; status?: string }>();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [sinceDays, setSinceDays] = useState(7);
+  const [sinceDays, setSinceDays] = useState(Number(params.sinceDays) || 7);
+  const [q, setQ] = useState(String(params.q || ''));
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr('');
     try {
       const token = await getPlatformToken();
-      if (!token) return;
-      const res = await platformAdminListOrders(token, { sinceDays });
+      if (!token) {
+        setErr('Sem sessão cloud.');
+        return;
+      }
+      const res = await platformAdminListOrders(token, {
+        sinceDays,
+        q: q.trim() || undefined,
+        status: params.status,
+      });
       if (!res?.ok) {
-        setErr((res as any)?.message || 'Falha.');
+        setErr((res as any)?.message || 'Falha ao listar pedidos.');
         return;
       }
       setOrders(((res as any).orders || []) as Order[]);
     } finally {
       setLoading(false);
     }
-  }, [sinceDays]);
+  }, [sinceDays, q, params.status]);
 
   useFocusEffect(
     useCallback(() => {
@@ -47,64 +64,134 @@ export default function AdminOrdersScreen() {
     }, [ok, load])
   );
 
+  async function openDetail(orderId: string) {
+    setDrawerOpen(true);
+    setDetailLoading(true);
+    setDetail(null);
+    try {
+      const token = await getPlatformToken();
+      if (!token) return;
+      const res = await platformAdminOrderDetail(token, orderId);
+      if (res?.ok) setDetail(res);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  if (!isWeb || gateLoading) return <LoadingBlock />;
   if (!ok) return null;
 
+  const order = detail?.order;
+
   return (
-    <View style={styles.screen}>
-      <Text style={styles.h1}>Pedidos</Text>
-      <View style={styles.filters}>
-        {[1, 7, 30].map((d) => (
-          <TouchableOpacity
-            key={d}
-            style={[styles.chip, sinceDays === d && styles.chipOn]}
-            onPress={() => setSinceDays(d)}
-          >
-            <Text style={[styles.chipText, sinceDays === d && styles.chipTextOn]}>
-              {d === 1 ? 'Hoje' : `${d}d`}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {err ? <Text style={styles.err}>{err}</Text> : null}
-      {loading && orders.length === 0 ? <ActivityIndicator color={theme.colors.primary} /> : null}
-      <FlatList
-        data={orders}
-        keyExtractor={(o) => o.id}
+    <>
+      <ScrollView
+        style={hqStyles.screen}
+        contentContainerStyle={hqStyles.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Text style={styles.title}>
-              {item.businessName} · #{item.shopOrderNumber || item.id.slice(-6)}
-            </Text>
-            <Text style={styles.meta}>
-              {item.status} · {formatPrice(item.total)} · {formatOrderTime(item.createdAt)}
-            </Text>
-            <Text style={styles.meta}>
-              {item.paymentConfirmed ? 'Pago' : 'Não pago'}
-              {item.customerName ? ` · ${item.customerName}` : ''}
-            </Text>
+      >
+        <PageHeader title="Pedidos" lead="Lista global com filtros e timeline" />
+        <ErrBox message={err} />
+
+        <View style={hqStyles.row}>
+          {[1, 7, 30].map((d) => (
+            <TouchableOpacity
+              key={d}
+              style={[hqStyles.btnGhost, sinceDays === d && { borderColor: hq.green }]}
+              onPress={() => setSinceDays(d)}
+            >
+              <Text style={hqStyles.btnGhostText}>{d}d</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TextInput
+          style={hqStyles.input}
+          placeholder="Buscar ID, cliente, loja, entregador…"
+          placeholderTextColor={hq.faint}
+          value={q}
+          onChangeText={setQ}
+          onSubmitEditing={() => void load()}
+        />
+
+        <View style={hqStyles.card}>
+          <View style={hqStyles.tableHead}>
+            <Text style={[hqStyles.tableHeadText, { flex: 1.2 }]}>Pedido</Text>
+            <Text style={[hqStyles.tableHeadText, { flex: 1 }]}>Status</Text>
+            <Text style={[hqStyles.tableHeadText, { flex: 0.8 }]}>Total</Text>
+            <Text style={[hqStyles.tableHeadText, { flex: 1 }]}>Quando</Text>
           </View>
+          {orders.length === 0 ? (
+            <Text style={hqStyles.empty}>Nenhum pedido no filtro.</Text>
+          ) : (
+            orders.map((o) => (
+              <TouchableOpacity
+                key={o.id}
+                style={hqStyles.tableRow}
+                onPress={() => void openDetail(o.id)}
+              >
+                <View style={{ flex: 1.2 }}>
+                  <Text style={hqStyles.tableCell} numberOfLines={1}>
+                    {o.businessName}
+                  </Text>
+                  <Text style={{ color: hq.faint, fontSize: 11 }}>{o.id.slice(0, 10)}…</Text>
+                </View>
+                <Text style={[hqStyles.tableCell, { flex: 1 }]}>{o.status}</Text>
+                <Text style={[hqStyles.tableCell, { flex: 0.8 }]}>{formatPrice(o.total)}</Text>
+                <Text style={[hqStyles.tableCell, { flex: 1, color: hq.muted }]}>
+                  {formatOrderTime(o.createdAt)}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title="Pedido"
+        subtitle={order?.id}
+      >
+        {detailLoading ? (
+          <LoadingBlock />
+        ) : order ? (
+          <View style={{ gap: 12 }}>
+            <View style={styles.metaRow}>
+              <StatusPill label={order.status} tone="blue" />
+              <Text style={styles.metaPrice}>{formatPrice(order.total)}</Text>
+            </View>
+            <Text style={hqStyles.lead}>
+              {order.businessName}
+              {order.customerName ? ` · ${order.customerName}` : ''}
+            </Text>
+            <Text style={hqStyles.h2}>Timeline</Text>
+            {(detail.timeline || []).map((ev: any, i: number) => (
+              <View key={i} style={styles.tl}>
+                <Text style={styles.tlTitle}>{ev.label}</Text>
+                <Text style={styles.tlMeta}>
+                  {formatOrderTime(ev.at)}
+                  {ev.meta ? ` · ${ev.meta}` : ''}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={hqStyles.empty}>Não foi possível carregar.</Text>
         )}
-      />
-    </View>
+      </AdminDrawer>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  h1: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 12 },
-  filters: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#21262d',
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  metaPrice: { color: hq.text, fontSize: 18, fontWeight: '800' },
+  tl: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: hq.line,
   },
-  chipOn: { backgroundColor: theme.colors.primary },
-  chipText: { color: '#c9d1d9', fontWeight: '600' },
-  chipTextOn: { color: '#fff' },
-  err: { color: '#f85149' },
-  row: { paddingVertical: 12, borderBottomWidth: 1, borderColor: '#21262d' },
-  title: { color: '#fff', fontWeight: '700' },
-  meta: { color: '#8b949e', fontSize: 12, marginTop: 2 },
+  tlTitle: { color: hq.text, fontWeight: '700', fontSize: 14 },
+  tlMeta: { color: hq.muted, fontSize: 12, marginTop: 2 },
 });
