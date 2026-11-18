@@ -41,6 +41,7 @@ import { filterStateForMode } from '@/services/hqMode';
 import { ensureProjectionSeeded } from '@/services/hqProjectionSeed';
 import { dualWriteCitySafe } from '@/services/relCatalogStore';
 import { dualWriteLedgerSafe } from '@/services/relLedgerStore';
+import { dualWriteApplicationSafe } from '@/services/relHqStore';
 
 type Ctx = {
   requireUser: (state: PlatformState, token?: string) => PlatformUser | null;
@@ -582,7 +583,8 @@ export async function handleAdminPlatformAction(
     const gate = requirePerm(actor, 'crm');
     if (!gate.ok) return gate;
     const input = action.application;
-    return mutatePlatformState((state) => {
+    let mirrored: PartnerApplicationRecord | null = null;
+    const out = await mutatePlatformState((state) => {
       const now = new Date().toISOString();
       const id = input.id || newId('app');
       const idx = (state.applications || []).findIndex((a) => a.id === id);
@@ -620,8 +622,11 @@ export async function handleAdminPlatformAction(
         after: { status: base.status, role: base.role },
         result: 'success',
       });
+      mirrored = base;
       return { state: nextState, result: { ok: true as const, application: base } };
     });
+    if (out?.ok && mirrored) await dualWriteApplicationSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'admin_set_application_status') {
@@ -629,7 +634,8 @@ export async function handleAdminPlatformAction(
     const actor = requireUser(state0, action.token);
     const gate = requirePerm(actor, 'crm');
     if (!gate.ok) return gate;
-    return mutatePlatformState((state) => {
+    let mirrored: PartnerApplicationRecord | null = null;
+    const out = await mutatePlatformState((state) => {
       const idx = (state.applications || []).findIndex((a) => a.id === action.id);
       if (idx < 0) {
         return {
@@ -667,8 +673,11 @@ export async function handleAdminPlatformAction(
         reason: action.reason,
         result: 'success',
       });
+      mirrored = next;
       return { state: nextState, result: { ok: true as const, application: next } };
     });
+    if (out?.ok && mirrored) await dualWriteApplicationSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'sync_partner_application') {

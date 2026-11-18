@@ -31,4 +31,11 @@ npm run db:migrate -- --dry-run
 Código: `services/persistenceMode.ts`.
 
 - **F0:** runner + flags (default off).
-- **F1:** tabelas `users` / `sessions` / `password_resets` (`0002_…sql`). Com `PERSISTENCE_MODE=hybrid` + `REL_USERS=1`, auth faz **dual-write** (JSONB continua SoT/leitura). Cutover de leitura **não** ligado.
+- **F1:** `users` / `sessions` / `password_resets` — `REL_USERS`
+- **F2:** `shops` / `menu_items` / `cities` — `REL_SHOPS`
+- **F3:** `orders` / `order_items` — `REL_ORDERS`
+- **F4:** `drivers` / `driver_sessions` / `fleet_reports` — `REL_FLEET`
+- **F5:** `ledger_entries` / `payout_profiles` / `plan_payments` — `REL_LEDGER`
+- **F6:** `tickets` / `applications` / `audit_logs` (+ extras) — `REL_HQ`
+
+Dual-write só com `PERSISTENCE_MODE=hybrid` + flag da fatia. JSONB continua SoT. **Não** rode migrate em produção sem OK.
