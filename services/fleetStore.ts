@@ -116,20 +116,26 @@ export function withFleetLock<T>(
 }
 
 export async function saveFleetState(state: FleetState): Promise<FleetState> {
+  let saved: FleetState;
   if (isFleetPostgresEnabled()) {
     try {
-      return await saveFleetStatePg(state);
+      saved = await saveFleetStatePg(state);
+      const { dualWriteFleetSafe } = await import('@/services/relFleetStore');
+      await dualWriteFleetSafe(saved);
+      return saved;
     } catch (err) {
       markFleetFilesystemFallback(err);
     }
   }
-  const next: FleetState = {
+  saved = {
     ...state,
     revision: (state.revision || 0) + 1,
     updatedAt: new Date().toISOString(),
   };
-  await persistFs(next);
-  return next;
+  await persistFs(saved);
+  const { dualWriteFleetSafe } = await import('@/services/relFleetStore');
+  await dualWriteFleetSafe(saved);
+  return saved;
 }
 
 export function mergeOrdersByUpdatedAt(
