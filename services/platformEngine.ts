@@ -33,6 +33,15 @@ import { mergeOrderFields, mergeOrdersPreferNewer } from '@/utils/orderMerge';
 import { hasOpenOrderCredit } from '@/services/orderLedgerServer';
 import { applyCeoBootstrap } from '@/services/platformRoles';
 import { handleAdminPlatformAction } from '@/services/platformAdminHandlers';
+import {
+  dualWriteAuthSafe,
+  upsertUserRel,
+  upsertSessionRel,
+  deleteSessionRel,
+  replaceSessionsForUserRel,
+  deleteSessionsForUserRel,
+  upsertPasswordResetRel,
+} from '@/services/relAuthStore';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -120,7 +129,9 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (!email || !password || password.length < 6) {
       return { ok: false, code: 'INVALID', message: 'E-mail e senha (mín. 6) são obrigatórios.' };
     }
-    return mutatePlatformState((state) => {
+    let mirroredUser: PlatformUser | null = null;
+    let mirroredSession: PlatformSession | null = null;
+    const out = await mutatePlatformState((state) => {
       if (state.users.some((u) => u.email === email)) {
         return {
           state,
@@ -149,6 +160,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         createdAt: new Date().toISOString(),
         expiresAt: sessionExpiresAt(30),
       };
+      mirroredUser = user;
+      mirroredSession = session;
       return {
         state: {
           ...state,
@@ -158,12 +171,23 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         result: { ok: true as const, user: publicUser(user), token },
       };
     });
+    if (out?.ok && mirroredUser && mirroredSession) {
+      const u = mirroredUser;
+      const s = mirroredSession;
+      await dualWriteAuthSafe('register', async () => {
+        await upsertUserRel(u);
+        await upsertSessionRel(s);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'login') {
     const email = String(action.email || '').trim().toLowerCase();
     const password = String(action.password || '');
-    return mutatePlatformState((state) => {
+    let mirroredUser: PlatformUser | null = null;
+    let mirroredSession: PlatformSession | null = null;
+    const out = await mutatePlatformState((state) => {
       const found = state.users.find((u) => u.email === email);
       const AUTH_FAIL = {
         ok: false as const,
@@ -193,15 +217,27 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         ...state.sessions.filter((s) => s.userId !== found.id),
         session,
       ];
+      mirroredUser = boosted;
+      mirroredSession = session;
       return {
         state: { ...state, users, sessions },
         result: { ok: true as const, user: publicUser(boosted), token },
       };
     });
+    if (out?.ok && mirroredUser && mirroredSession) {
+      const u = mirroredUser;
+      const s = mirroredSession;
+      await dualWriteAuthSafe('login', async () => {
+        await upsertUserRel(u);
+        await replaceSessionsForUserRel(u.id, s);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'me') {
-    return mutatePlatformState((state) => {
+    let mirroredUser: PlatformUser | null = null;
+    const out = await mutatePlatformState((state) => {
       const user = requireUser(state, action.token);
       if (!user) {
         return {
@@ -214,21 +250,35 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         boosted.platformRole !== user.platformRole
           ? state.users.map((u) => (u.id === user.id ? boosted : u))
           : state.users;
+      mirroredUser = boosted;
       return {
         state: { ...state, users },
         result: { ok: true as const, user: publicUser(boosted) },
       };
     });
+    if (out?.ok && mirroredUser) {
+      const u = mirroredUser;
+      await dualWriteAuthSafe('me', async () => {
+        await upsertUserRel(u);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'logout') {
-    return mutatePlatformState((state) => ({
+    const out = await mutatePlatformState((state) => ({
       state: {
         ...state,
         sessions: state.sessions.filter((s) => s.token !== action.token),
       },
       result: { ok: true as const },
     }));
+    if (out?.ok && action.token) {
+      await dualWriteAuthSafe('logout', async () => {
+        await deleteSessionRel(action.token);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'request_password_reset') {
@@ -261,6 +311,9 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
       };
     });
     if (shouldSend) {
+      await dualWriteAuthSafe('request_password_reset', async () => {
+        await upsertPasswordResetRel({ email, tokenHash, expiresAt, attempts: 0 });
+      });
       try {
         await sendPasswordResetEmail(email, token);
       } catch (err) {
@@ -286,7 +339,22 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
       return AUTH_FAIL;
     }
     const tokenHash = hashResetToken(resetToken);
-    return mutatePlatformState((state) => {
+    let mirroredUser: PlatformUser | null = null;
+    let mirroredReset: {
+      email: string;
+      tokenHash: string;
+      expiresAt: string;
+      usedAt?: string;
+      attempts?: number;
+    } | null = null;
+    let attemptsOnly: {
+      email: string;
+      tokenHash: string;
+      expiresAt: string;
+      usedAt?: string;
+      attempts?: number;
+    } | null = null;
+    const out = await mutatePlatformState((state) => {
       const list = state.passwordResets || [];
       const idxReset = list.findIndex((r) => r.email === email && r.tokenHash);
       const reset = list[idxReset];
@@ -301,7 +369,15 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         dummyPasswordCheck(resetToken);
         if (reset && idxReset >= 0) {
           const next = [...list];
-          next[idxReset] = { ...reset, attempts: (reset.attempts || 0) + 1 };
+          const bumped = { ...reset, attempts: (reset.attempts || 0) + 1 };
+          next[idxReset] = bumped;
+          attemptsOnly = {
+            email: bumped.email,
+            tokenHash: bumped.tokenHash!,
+            expiresAt: bumped.expiresAt,
+            usedAt: bumped.usedAt,
+            attempts: bumped.attempts,
+          };
           return { state: { ...state, passwordResets: next }, result: AUTH_FAIL };
         }
         return { state, result: AUTH_FAIL };
@@ -314,6 +390,14 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
       const users = [...state.users];
       users[idx] = { ...users[idx], passwordHash: hash, passwordSalt: salt };
       const used = { ...reset, usedAt: new Date().toISOString(), attempts: (reset.attempts || 0) + 1 };
+      mirroredUser = users[idx];
+      mirroredReset = {
+        email: used.email,
+        tokenHash: used.tokenHash!,
+        expiresAt: used.expiresAt,
+        usedAt: used.usedAt,
+        attempts: used.attempts,
+      };
       return {
         state: {
           ...state,
@@ -324,10 +408,26 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         result: { ok: true as const },
       };
     });
+    if (out?.ok && mirroredUser && mirroredReset) {
+      const u = mirroredUser;
+      const r = mirroredReset;
+      await dualWriteAuthSafe('reset_password', async () => {
+        await upsertUserRel(u);
+        await upsertPasswordResetRel(r);
+        await deleteSessionsForUserRel(u.id);
+      });
+    } else if (attemptsOnly) {
+      const r = attemptsOnly;
+      await dualWriteAuthSafe('reset_password_attempts', async () => {
+        await upsertPasswordResetRel(r);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'update_profile') {
-    return mutatePlatformState((state) => {
+    let mirroredUser: PlatformUser | null = null;
+    const out = await mutatePlatformState((state) => {
       const user = requireUser(state, action.token);
       if (!user) {
         return {
@@ -347,11 +447,19 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         u.id === user.id ? { ...u, ...patch } : u
       );
       const updated = users.find((u) => u.id === user.id)!;
+      mirroredUser = updated;
       return {
         state: { ...state, users },
         result: { ok: true as const, user: publicUser(updated) },
       };
     });
+    if (out?.ok && mirroredUser) {
+      const u = mirroredUser;
+      await dualWriteAuthSafe('update_profile', async () => {
+        await upsertUserRel(u);
+      });
+    }
+    return out;
   }
 
   if (action.action === 'list_orders') {

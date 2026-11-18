@@ -28,4 +28,7 @@ npm run db:migrate -- --dry-run
 | `REL_LEDGER` | `0` \| `1` | off |
 | `REL_HQ` | `0` \| `1` | off |
 
-Código: `services/persistenceMode.ts`. Em F0 as flags **não** mudam o runtime das engines — só o runner e o contrato existem.
+Código: `services/persistenceMode.ts`.
+
+- **F0:** runner + flags (default off).
+- **F1:** tabelas `users` / `sessions` / `password_resets` (`0002_…sql`). Com `PERSISTENCE_MODE=hybrid` + `REL_USERS=1`, auth faz **dual-write** (JSONB continua SoT/leitura). Cutover de leitura **não** ligado.
