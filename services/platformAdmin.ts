@@ -98,6 +98,9 @@ export function appendAuditLog(
   };
   const prev = Array.isArray(state.auditLogs) ? state.auditLogs : [];
   const auditLogs = [entry, ...prev].slice(0, 5000);
+  void import('@/services/relHqStore')
+    .then((m) => m.dualWriteAuditSafe(entry))
+    .catch(() => undefined);
   return { ...state, auditLogs };
 }
 

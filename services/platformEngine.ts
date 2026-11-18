@@ -45,6 +45,7 @@ import {
 import { dualWriteShopSafe } from '@/services/relCatalogStore';
 import { dualWriteOrderSafe, dualWriteOrdersSafe } from '@/services/relOrdersStore';
 import { dualWriteLedgerSafe } from '@/services/relLedgerStore';
+import { dualWriteTicketSafe } from '@/services/relHqStore';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -817,7 +818,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (subject.length < 3 || body.length < 3) {
       return { ok: false, code: 'VALIDATION', message: 'Descreva o problema.' };
     }
-    return mutatePlatformState((state) => {
+    let mirrored: SupportTicket | null = null;
+    const out = await mutatePlatformState((state) => {
       const now = new Date().toISOString();
       const ticket: SupportTicket = {
         id: newId('tkt'),
@@ -831,11 +833,14 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         updatedAt: now,
         messages: [{ at: now, from: 'user', text: body }],
       };
+      mirrored = ticket;
       return {
         state: { ...state, tickets: [ticket, ...state.tickets] },
         result: { ok: true as const, ticket },
       };
     });
+    if (out?.ok && mirrored) await dualWriteTicketSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'ticket_list') {
@@ -860,7 +865,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (!supportPinOk(action.pin)) {
       return { ok: false, code: 'AUTH', message: 'PIN de suporte inválido.' };
     }
-    return mutatePlatformState((state) => {
+    let mirrored: SupportTicket | null = null;
+    const out = await mutatePlatformState((state) => {
       const idx = state.tickets.findIndex((t) => t.id === action.id);
       if (idx < 0) {
         return {
@@ -881,11 +887,14 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         messages,
       };
       const tickets = state.tickets.map((t, i) => (i === idx ? ticket : t));
+      mirrored = ticket;
       return {
         state: { ...state, tickets },
         result: { ok: true as const, ticket },
       };
     });
+    if (out?.ok && mirrored) await dualWriteTicketSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'upsert_chat_message') {
