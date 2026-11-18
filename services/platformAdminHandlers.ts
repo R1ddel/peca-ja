@@ -39,6 +39,7 @@ import {
 import { isStaffRole, normalizeRole, STAFF_ROLES, type PlatformRole } from '@/services/platformRoles';
 import { filterStateForMode } from '@/services/hqMode';
 import { ensureProjectionSeeded } from '@/services/hqProjectionSeed';
+import { dualWriteCitySafe } from '@/services/relCatalogStore';
 
 type Ctx = {
   requireUser: (state: PlatformState, token?: string) => PlatformUser | null;
@@ -694,7 +695,8 @@ export async function handleAdminPlatformAction(
     const gate = requirePerm(actor, 'config');
     if (!gate.ok) return gate;
     const input = action.city;
-    return mutatePlatformState((state) => {
+    let mirrored: PlatformCity | null = null;
+    const out = await mutatePlatformState((state) => {
       const now = new Date().toISOString();
       const id = input.id || newId('city');
       const idx = (state.cities || []).findIndex((c) => c.id === id);
@@ -720,8 +722,11 @@ export async function handleAdminPlatformAction(
         after: { name: city.name, status: city.status },
         result: 'success',
       });
+      mirrored = city;
       return { state: nextState, result: { ok: true as const, city } };
     });
+    if (out?.ok && mirrored) await dualWriteCitySafe(mirrored);
+    return out;
   }
 
   if (action.action === 'admin_set_city_status') {
@@ -733,7 +738,8 @@ export async function handleAdminPlatformAction(
     if (action.status === 'inactive' && !reason) {
       return { ok: false, code: 'VALIDATION', message: 'Motivo obrigatório para desativar cidade.' };
     }
-    return mutatePlatformState((state) => {
+    let mirrored: PlatformCity | null = null;
+    const out = await mutatePlatformState((state) => {
       const idx = (state.cities || []).findIndex((c) => c.id === action.id);
       if (idx < 0) {
         return {
@@ -757,8 +763,11 @@ export async function handleAdminPlatformAction(
         reason,
         result: 'success',
       });
+      mirrored = next;
       return { state: nextState, result: { ok: true as const, city: next } };
     });
+    if (out?.ok && mirrored) await dualWriteCitySafe(mirrored);
+    return out;
   }
 
   if (action.action === 'admin_list_coupons') {
