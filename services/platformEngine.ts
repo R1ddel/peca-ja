@@ -43,6 +43,7 @@ import {
   upsertPasswordResetRel,
 } from '@/services/relAuthStore';
 import { dualWriteShopSafe } from '@/services/relCatalogStore';
+import { dualWriteOrderSafe, dualWriteOrdersSafe } from '@/services/relOrdersStore';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -511,7 +512,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (!order?.id) {
       return { ok: false, code: 'VALIDATION', message: 'Pedido inválido.' };
     }
-    return mutatePlatformState((state) => {
+    let mirrored: Order | null = null;
+    const out = await mutatePlatformState((state) => {
       const existing = state.orders.find((o) => o.id === order.id);
       if (existing && !orderVisibleToUser(existing, user) && existing.userId !== user.id) {
         // Permite atualização de status por quem já tem o pedido (comércio/entregador via mesmo token de conta)
@@ -557,11 +559,14 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
             )
           : [...state.orders, { ...safeOrder, userId: user.id, updatedAt: safeOrder.updatedAt || stamp }];
       const saved = orders.find((o) => o.id === order.id)!;
+      mirrored = saved;
       return {
         state: { ...state, orders },
         result: { ok: true as const, order: saved, revision: state.revision + 1 },
       };
     });
+    if (out?.ok && mirrored) await dualWriteOrderSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'sync_orders') {
@@ -569,7 +574,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     const user = requireUser(state0, action.token);
     if (!user) return { ok: false, code: 'AUTH', message: 'Sessão inválida ou expirada.' };
     const incoming = Array.isArray(action.orders) ? action.orders : [];
-    return mutatePlatformState((state) => {
+    let mirroredOrders: Order[] = [];
+    const out = await mutatePlatformState((state) => {
       // Local-first: merge com proteção — não deixa zerar total financeiro de pedido alheio
       const safeIncoming = (incoming as Order[]).map((inc) => {
         const prev = state.orders.find((o) => o.id === inc.id);
@@ -588,6 +594,7 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         return inc;
       });
       const orders = mergeOrdersPreferNewer(state.orders, safeIncoming);
+      mirroredOrders = safeIncoming;
       return {
         state: { ...state, orders },
         result: {
@@ -597,6 +604,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         },
       };
     });
+    if (out?.ok && mirroredOrders.length) await dualWriteOrdersSafe(mirroredOrders);
+    return out;
   }
 
   if (action.action === 'list_shops') {
