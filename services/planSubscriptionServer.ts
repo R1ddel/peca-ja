@@ -8,6 +8,7 @@ import type { MerchantPlan } from '@/constants/plans';
 import { MERCHANT_PLANS } from '@/constants/plans';
 import { loadPlatformState, mutatePlatformState } from '@/services/platformStore';
 import type { PlanPaymentRecord, PlatformState } from '@/services/platformTypes';
+import { dualWritePlanPaymentSafe } from '@/services/relLedgerStore';
 
 /** Mesmo prazo do onboarding local (utils/partners). */
 const PLAN_BILLING_DAYS = 30;
@@ -74,11 +75,11 @@ export async function registerPlanPayment(input: {
     throw new Error('registerPlanPayment: id/applicationId obrigatórios');
   }
 
-  return mutatePlatformState((state) => {
+  const next = await mutatePlatformState((state) => {
     const list = [...(state.planPayments || [])];
     const idx = list.findIndex((p) => p.id === id);
     const now = new Date().toISOString();
-    const next: PlanPaymentRecord = {
+    const row: PlanPaymentRecord = {
       id,
       applicationId,
       plan: input.plan,
@@ -91,13 +92,15 @@ export async function registerPlanPayment(input: {
       ownerUserId: input.ownerUserId || list[idx]?.ownerUserId,
       businessName: input.businessName || list[idx]?.businessName,
     };
-    if (idx >= 0) list[idx] = { ...list[idx], ...next };
-    else list.push(next);
+    if (idx >= 0) list[idx] = { ...list[idx], ...row };
+    else list.push(row);
     return {
       state: withPlanPayments(state, list),
-      result: next,
+      result: row,
     };
   });
+  await dualWritePlanPaymentSafe(next);
+  return next;
 }
 
 /**

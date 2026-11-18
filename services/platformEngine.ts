@@ -44,6 +44,7 @@ import {
 } from '@/services/relAuthStore';
 import { dualWriteShopSafe } from '@/services/relCatalogStore';
 import { dualWriteOrderSafe, dualWriteOrdersSafe } from '@/services/relOrdersStore';
+import { dualWriteLedgerSafe } from '@/services/relLedgerStore';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -774,7 +775,17 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         return { ok: false, code: 'BALANCE', message: 'Saldo insuficiente.' };
       }
     }
-    return mutatePlatformState((state) => {
+    let mirroredEntry: {
+      id: string;
+      createdAt: string;
+      ownerType: typeof action.entry.ownerType;
+      ownerId: string;
+      orderId?: string;
+      kind: typeof action.entry.kind;
+      amount: number;
+      note: string;
+    } | null = null;
+    const out = await mutatePlatformState((state) => {
       const entry = {
         id: action.entry.id || newId('led'),
         createdAt: action.entry.createdAt || new Date().toISOString(),
@@ -785,11 +796,14 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         amount,
         note: action.entry.note,
       };
+      mirroredEntry = entry;
       return {
         state: { ...state, ledger: [...state.ledger, entry] },
         result: { ok: true as const, entry },
       };
     });
+    if (out?.ok && mirroredEntry) await dualWriteLedgerSafe(mirroredEntry);
+    return out;
   }
 
   if (action.action === 'ticket_create') {
