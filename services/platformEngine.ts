@@ -42,6 +42,7 @@ import {
   deleteSessionsForUserRel,
   upsertPasswordResetRel,
 } from '@/services/relAuthStore';
+import { dualWriteShopSafe } from '@/services/relCatalogStore';
 
 function publicUser(u: PlatformUser): AuthPublicUser {
   const { passwordHash: _h, passwordSalt: _s, ...rest } = u;
@@ -619,7 +620,8 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
     if (!shop?.businessId || !shop?.applicationId) {
       return { ok: false, code: 'VALIDATION', message: 'Loja inválida.' };
     }
-    return mutatePlatformState((state) => {
+    let mirroredShop: typeof shop | null = null;
+    const out = await mutatePlatformState((state) => {
       const idx = state.shops.findIndex((s) => s.businessId === shop.businessId);
       const existing = idx >= 0 ? state.shops[idx] : null;
       if (existing?.ownerUserId && existing.ownerUserId !== user.id) {
@@ -654,11 +656,16 @@ export async function handlePlatformAction(action: PlatformAction): Promise<any>
         idx >= 0
           ? state.shops.map((s, i) => (i === idx ? next : s))
           : [...state.shops, next];
+      mirroredShop = next;
       return {
         state: { ...state, shops },
         result: { ok: true as const, shop: next },
       };
     });
+    if (out?.ok && mirroredShop) {
+      await dualWriteShopSafe(mirroredShop);
+    }
+    return out;
   }
 
   if (action.action === 'ledger_list') {
