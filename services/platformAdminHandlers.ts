@@ -40,6 +40,7 @@ import { isStaffRole, normalizeRole, STAFF_ROLES, type PlatformRole } from '@/se
 import { filterStateForMode } from '@/services/hqMode';
 import { ensureProjectionSeeded } from '@/services/hqProjectionSeed';
 import { dualWriteCitySafe } from '@/services/relCatalogStore';
+import { dualWriteLedgerSafe } from '@/services/relLedgerStore';
 
 type Ctx = {
   requireUser: (state: PlatformState, token?: string) => PlatformUser | null;
@@ -517,7 +518,17 @@ export async function handleAdminPlatformAction(
     if (!Number.isFinite(amount) || amount === 0) {
       return { ok: false, code: 'VALIDATION', message: 'Valor inválido.' };
     }
-    return mutatePlatformState((state) => {
+    let mirrored: {
+      id: string;
+      ownerType: typeof action.ownerType;
+      ownerId: string;
+      kind: typeof action.kind;
+      amount: number;
+      note: string;
+      createdAt: string;
+      actorUserId: string;
+    } | null = null;
+    const out = await mutatePlatformState((state) => {
       const entry = {
         id: newId('led'),
         ownerType: action.ownerType,
@@ -528,6 +539,7 @@ export async function handleAdminPlatformAction(
         createdAt: new Date().toISOString(),
         actorUserId: actor!.id,
       };
+      mirrored = entry;
       let nextState: PlatformState = {
         ...state,
         ledger: [entry, ...(state.ledger || [])],
@@ -548,6 +560,8 @@ export async function handleAdminPlatformAction(
       });
       return { state: nextState, result: { ok: true as const, entry } };
     });
+    if (out?.ok && mirrored) await dualWriteLedgerSafe(mirrored);
+    return out;
   }
 
   if (action.action === 'admin_list_applications') {
