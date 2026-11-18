@@ -16,6 +16,8 @@
     "api:server": "tsx server/index.ts",
     "db:init": "tsx scripts/init-db.ts",
     "db:check": "tsx scripts/init-db.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:migrate:status": "tsx scripts/db-migrate.ts --status",
     "seed:hq-projection": "tsx scripts/seed-hq-projection.ts",
     "payments:check": "tsx scripts/smoke-payments-router.ts",
     "security:round2": "tsx scripts/security-round2.test.ts",
