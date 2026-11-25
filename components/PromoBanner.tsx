@@ -171,10 +171,11 @@ const styles = StyleSheet.create({
   },
   bannerWrapper: {
     width: BANNER_WIDTH,
-    height: 210,
-    borderRadius: theme.radius.lg,
+    height: 200,
+    borderRadius: theme.radius.xl,
     overflow: 'hidden',
-    backgroundColor: '#111827',
+    backgroundColor: theme.colors.secondary,
+    ...theme.shadow.card,
   },
   image: {
     width: '100%',

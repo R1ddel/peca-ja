@@ -90,7 +90,7 @@ export default function AddressesScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Endereços salvos" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Endereços salvos" fallbackHref="/(tabs)/profile" variant="brand" />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

@@ -46,7 +46,7 @@ export default function FavoritesScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Favoritos" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Favoritos" fallbackHref="/(tabs)/profile" variant="brand" />
       <ScrollView contentContainerStyle={styles.content}>
         {empty ? (
           <View style={styles.empty}>

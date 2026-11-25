@@ -161,6 +161,7 @@ export default function BusinessScreen() {
       <View style={styles.screen}>
         <BackHeader
           title="Comércio"
+          variant="brand"
           fallbackHref={
             cameFromConveniencia
               ? '/conveniencia'
@@ -201,6 +202,7 @@ export default function BusinessScreen() {
     <View style={styles.screen}>
       <BackHeader
         title={business.name}
+        variant="brand"
         preferFallback={cameFromSearch || cameFromConveniencia}
         fallbackHref={backFallbackHref}
         fallbackParams={backFallbackParams}
@@ -474,7 +476,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   notFound: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.md },
   notFoundText: { fontSize: theme.fontSize.lg, color: theme.colors.textSecondary },
-  coverContainer: { position: 'relative', height: 200 },
+  coverContainer: { position: 'relative', height: 220 },
   cover: { width: '100%', height: '100%' },
   coverGradient: { ...StyleSheet.absoluteFillObject },
   closedOverlay: {
@@ -511,13 +513,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     margin: theme.spacing.md,
     marginTop: -theme.spacing.xl,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.xl,
     padding: theme.spacing.md,
-    shadowColor: theme.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 4,
+    ...theme.shadow.card,
   },
   infoCardAfterBanner: {
     marginTop: theme.spacing.sm,

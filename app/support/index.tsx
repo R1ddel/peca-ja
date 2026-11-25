@@ -293,7 +293,7 @@ export default function SupportScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Ajuda e suporte" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Ajuda e suporte" fallbackHref="/(tabs)/profile" variant="brand" />
 
       <View style={styles.slaBanner}>
         <Ionicons name="time-outline" size={16} color={theme.colors.primaryDark} />

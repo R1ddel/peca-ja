@@ -1,0 +1,71 @@
+# EAS Build: este arquivo SUBSTITUI o .gitignore no upload.
+# Manter espelhado o .gitignore + excluir o que não entra no APK/AAB/IPA.
+
+# --- espelho do .gitignore ---
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env
+.env.*
+!.env.example
+*payout*keys*
+.tmp-qr/
+pecaja-expo-qr.png
+*.tsbuildinfo
+/ios
+/android
+.venv-logos/
+.venv/
+.data/
+.curl-body.txt
+.curl-headers.txt
+.expo-bundle-test/
+.restore/
+.tmp-extract/
+.tmp-shell-test.txt
+.expo-tunnel.log
+
+# --- não vai para Play / Apple ---
+marketing/
+docs/
+equipe-ia/
+tmp-mockups/
+.cursor/
+.claude/
+agent-transcripts/
+*.md
+!README.md
+!AGENTS.md
+
+# PDFs / mídia de campanha em qualquer pasta
+*.pdf
+*.mp4
+*.mov
+*.wav
+*.psd
+*.ai
+
+# assets de intro não referenciados no app
+assets/images/intro-*.png
+
+# testes / scripts locais pesados (build não precisa)
+coverage/
+.nyc_output/
+**/*.test.ts
+**/*.test.tsx
+**/__tests__/

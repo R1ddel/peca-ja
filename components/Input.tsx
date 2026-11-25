@@ -55,10 +55,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: 1.5,
     borderColor: theme.colors.border,
     paddingHorizontal: theme.spacing.md,
+    ...theme.shadow.soft,
   },
   inputError: {
     borderColor: theme.colors.error,

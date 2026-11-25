@@ -107,7 +107,7 @@ export default function OrderTrackingScreen() {
   if (!order) {
     return (
       <MobileShell style={styles.screen}>
-        <BackHeader title="Pedido" fallbackHref="/(tabs)/orders" />
+        <BackHeader title="Pedido" fallbackHref="/(tabs)/orders" variant="brand" />
         <View style={styles.notFound}>
           <Ionicons name="alert-circle-outline" size={48} color={theme.colors.textMuted} />
           <Text style={styles.notFoundText}>Pedido não encontrado</Text>
@@ -223,7 +223,12 @@ export default function OrderTrackingScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title={`Pedido #${order.id}`} fallbackHref="/(tabs)/orders" />
+      <BackHeader
+        title={`Pedido #${order.id}`}
+        subtitle="Acompanhe sua entrega"
+        fallbackHref="/(tabs)/orders"
+        variant="brand"
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {order.status === 'cancelado' && (
           <View style={[styles.statusBanner, { backgroundColor: theme.colors.errorLight }]}>

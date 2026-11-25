@@ -72,9 +72,9 @@ const styles = StyleSheet.create({
   primary: {
     backgroundColor: theme.colors.primary,
     shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
     elevation: 4,
   },
   secondary: {

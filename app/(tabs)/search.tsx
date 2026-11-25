@@ -205,27 +205,27 @@ export default function SearchScreen() {
     <View style={styles.container}>
       <Tabs.Screen options={{ headerShown: false }} />
       <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
-        <Text style={styles.tabTitle}>Buscar</Text>
+        <Text style={styles.tabTitle}>Buscar no Peça Já</Text>
         <Text style={styles.tabSub}>Pratos, mercados e farmácias perto de você</Text>
-      </View>
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={20} color={theme.colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar prato ou produto…"
-          placeholderTextColor={theme.colors.textMuted}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={() => rememberSearch(query)}
-          returnKeyType="search"
-          autoFocus
-          accessibilityLabel="Campo de busca"
-        />
-        {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')} accessibilityLabel="Limpar busca">
-            <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-        )}
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="O que você está procurando?"
+            placeholderTextColor={theme.colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => rememberSearch(query)}
+            returnKeyType="search"
+            autoFocus
+            accessibilityLabel="Campo de busca"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity onPress={() => setQuery('')} accessibilityLabel="Limpar busca">
+              <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -486,17 +486,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   tabHeader: {
     paddingHorizontal: theme.spacing.md,
-    paddingBottom: 4,
+    paddingBottom: theme.spacing.md,
+    backgroundColor: theme.colors.primary,
+    borderBottomLeftRadius: theme.radius.xl,
+    borderBottomRightRadius: theme.radius.xl,
   },
   tabTitle: {
     fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
+    fontWeight: theme.fontWeight.extrabold,
+    color: theme.colors.white,
   },
   tabSub: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textMuted,
+    color: 'rgba(255,255,255,0.88)',
     marginTop: 2,
+    marginBottom: theme.spacing.md,
   },
   recentHead: {
     flexDirection: 'row',
@@ -514,14 +518,12 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    margin: theme.spacing.md,
-    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.full,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     gap: theme.spacing.sm,
+    ...theme.shadow.soft,
   },
   searchInput: { flex: 1, fontSize: theme.fontSize.md, color: theme.colors.text },
   content: { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xl },
@@ -564,12 +566,8 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#F0E0A8',
-    shadowColor: '#C9A227',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
+    borderColor: theme.colors.borderLight,
+    ...theme.shadow.card,
   },
   comboCard: {
     borderColor: theme.colors.primaryMuted,

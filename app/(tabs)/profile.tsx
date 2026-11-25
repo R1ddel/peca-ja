@@ -445,7 +445,13 @@ export default function ProfileScreen() {
   return (
     <View style={styles.screen}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <BackHeader title="Perfil" preferFallback fallbackHref="/(tabs)" />
+      <BackHeader
+        title="Meu perfil"
+        subtitle="Gerencie sua conta e pedidos"
+        preferFallback
+        fallbackHref="/(tabs)"
+        variant="brand"
+      />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <FadeInUp delay={40}>
         <View style={styles.profileHeader}>
@@ -1211,9 +1217,10 @@ const styles = StyleSheet.create({
   loyaltyCard: {
     marginHorizontal: theme.spacing.md,
     marginTop: theme.spacing.md,
-    backgroundColor: theme.colors.secondary,
+    backgroundColor: theme.colors.primary,
     borderRadius: theme.radius.xl,
     padding: theme.spacing.lg,
+    ...theme.shadow.card,
   },
   merchantAccess: {
     marginHorizontal: theme.spacing.md,
@@ -1586,9 +1593,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     marginBottom: theme.spacing.sm,
     gap: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    ...theme.shadow.soft,
   },
   menuLabel: { flex: 1, fontSize: theme.fontSize.md, color: theme.colors.text },
   logoutBtn: {

@@ -602,6 +602,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    ...theme.shadow.card,
   },
   tabs: {
     flexDirection: 'row',

@@ -15,6 +15,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     alignSelf: 'center',
+    backgroundColor: theme.colors.background,
     ...(Platform.OS === 'web'
       ? { maxWidth: theme.layout.maxContentWidth }
       : null),

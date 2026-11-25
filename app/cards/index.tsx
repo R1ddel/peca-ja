@@ -92,7 +92,7 @@ export default function CardsScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Meus cartões" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Meus cartões" fallbackHref="/(tabs)/profile" variant="brand" />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

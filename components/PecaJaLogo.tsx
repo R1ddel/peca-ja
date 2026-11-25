@@ -6,10 +6,12 @@ import { theme } from '@/constants/theme';
 type PecaJaLogoProps = {
   size?: 'sm' | 'md';
   showName?: boolean;
+  /** Texto claro sobre cabeçalho verde institucional. */
+  tone?: 'default' | 'onPrimary';
 };
 
 /** Logo Peça Já com animação nativa (sem Reanimated). */
-export function PecaJaLogo({ size = 'md', showName = true }: PecaJaLogoProps) {
+export function PecaJaLogo({ size = 'md', showName = true, tone = 'default' }: PecaJaLogoProps) {
   const floatY = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(0.35)).current;
@@ -110,8 +112,16 @@ export function PecaJaLogo({ size = 'md', showName = true }: PecaJaLogoProps) {
 
       {showName && (
         <View style={styles.textCol}>
-          <Text style={[styles.brand, size === 'sm' && styles.brandSm]}>Peça Já</Text>
-          <Text style={styles.tag}>delivery</Text>
+          <Text
+            style={[
+              styles.brand,
+              size === 'sm' && styles.brandSm,
+              tone === 'onPrimary' && styles.brandOnPrimary,
+            ]}
+          >
+            Peça Já
+          </Text>
+          <Text style={[styles.tag, tone === 'onPrimary' && styles.tagOnPrimary]}>delivery</Text>
         </View>
       )}
     </View>
@@ -161,5 +171,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
     marginTop: -2,
+  },
+  brandOnPrimary: {
+    color: theme.colors.white,
+  },
+  tagOnPrimary: {
+    color: 'rgba(255,255,255,0.85)',
   },
 });

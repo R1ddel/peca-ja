@@ -30,7 +30,7 @@ export function OrderPersonCard({
   onChat,
   chatLabel = 'Chat',
 }: OrderPersonCardProps) {
-  const accent = role === 'driver' ? '#7C3AED' : theme.colors.accent;
+  const accent = role === 'driver' ? theme.colors.primary : theme.colors.accent;
   const roleLabel = role === 'driver' ? 'Entregador' : 'Cliente';
   const letter = (name || roleLabel).trim().charAt(0).toUpperCase() || '?';
   const about =
@@ -94,11 +94,12 @@ export function OrderPersonCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: 16,
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
     padding: 14,
     marginBottom: 10,
     gap: 12,
+    ...theme.shadow.soft,
   },
   top: {
     flexDirection: 'row',

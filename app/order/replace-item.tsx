@@ -73,7 +73,7 @@ export default function ReplaceOrderItemScreen() {
   if (!order || !issue || !oldLine) {
     return (
       <MobileShell style={styles.screen}>
-        <BackHeader title="Trocar item" fallbackHref="/(tabs)/orders" preferFallback />
+        <BackHeader title="Trocar item" fallbackHref="/(tabs)/orders" preferFallback variant="brand" />
         <View style={styles.center}>
           <Text style={styles.muted}>
             {!order

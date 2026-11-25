@@ -50,7 +50,7 @@ export default function NotificationsScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Notificações" fallbackHref="/(tabs)" preferFallback />
+      <BackHeader title="Notificações" fallbackHref="/(tabs)" preferFallback variant="brand" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.lead}>Cupons para usar no pedido. Cada um vale uma vez.</Text>
 

@@ -73,7 +73,7 @@ export default function CommunityScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Comunidade" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Comunidade" fallbackHref="/(tabs)/profile" variant="brand" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <FadeInUp delay={20}>

@@ -138,7 +138,7 @@ export default function CartScreen() {
   if (items.length === 0) {
     return (
       <MobileShell style={styles.screen}>
-        <BackHeader title="Carrinho" />
+        <BackHeader title="Seu carrinho" subtitle="Confira os itens do seu pedido" variant="brand" />
         <View style={styles.empty}>
           <View style={styles.emptyIcon}>
             <Ionicons name="bag-handle-outline" size={48} color={theme.colors.primary} />
@@ -153,7 +153,7 @@ export default function CartScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Carrinho" />
+      <BackHeader title="Seu carrinho" subtitle="Confira os itens do seu pedido" variant="brand" />
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.businessHeader}>
@@ -353,8 +353,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.md,
     padding: theme.spacing.md,
-    backgroundColor: theme.colors.primaryLight,
-    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    ...theme.shadow.soft,
   },
   businessName: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold, color: theme.colors.primaryDark },
   item: {
@@ -365,8 +368,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     alignItems: 'center',
     gap: theme.spacing.md,
+    ...theme.shadow.soft,
   },
-  itemImage: { width: 64, height: 64, borderRadius: theme.radius.md, backgroundColor: theme.colors.borderLight },
+  itemImage: { width: 72, height: 72, borderRadius: theme.radius.md, backgroundColor: theme.colors.borderLight },
   itemInfo: { flex: 1 },
   itemName: { fontSize: theme.fontSize.md, fontWeight: theme.fontWeight.semibold, color: theme.colors.text },
   itemAddons: {

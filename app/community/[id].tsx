@@ -78,7 +78,7 @@ export default function CommunityProfileScreen() {
   if (!member) {
     return (
       <View style={styles.screen}>
-        <BackHeader title="Perfil" fallbackHref="/community" />
+        <BackHeader title="Perfil" fallbackHref="/community" variant="brand" />
         <View style={styles.notFound}>
           <Ionicons name="person-outline" size={48} color={theme.colors.textMuted} />
           <Text style={styles.notFoundText}>Usuário não encontrado</Text>

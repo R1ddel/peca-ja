@@ -60,3 +60,7 @@ pecaja-expo-qr.png
 .tmp-shell-test.txt
 .expo-tunnel.log
 .venv/
+
+# mockups / lixo local (não entra no app)
+tmp-mockups/
+.easignore.bak

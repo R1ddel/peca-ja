@@ -853,7 +853,7 @@ export default function CheckoutScreen() {
   if (!user || items.length === 0) {
     return (
       <MobileShell style={styles.screen}>
-        <BackHeader title="Finalizar pedido" />
+        <BackHeader title="Finalizar pedido" subtitle="Revise endereço e pagamento" variant="brand" />
         <View style={styles.loadingBox}>
           <Text style={styles.loadingText}>
             {!user
@@ -874,7 +874,7 @@ export default function CheckoutScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Finalizar pedido" />
+      <BackHeader title="Finalizar pedido" subtitle="Revise endereço e pagamento" variant="brand" />
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.section}>
@@ -1356,9 +1356,10 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: 1.5,
     borderColor: theme.colors.border,
+    ...theme.shadow.soft,
   },
   addressChipSelected: {
     borderColor: theme.colors.primary,
@@ -1394,10 +1395,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     backgroundColor: theme.colors.surface,
     padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     marginBottom: theme.spacing.sm,
     borderWidth: 1.5,
     borderColor: theme.colors.border,
+    ...theme.shadow.soft,
   },
   paymentSelected: {
     borderColor: theme.colors.primary,

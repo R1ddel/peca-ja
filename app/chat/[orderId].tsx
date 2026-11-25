@@ -153,7 +153,7 @@ export default function OrderChatScreen() {
   if (!order) {
     return (
       <View style={styles.screen}>
-        <BackHeader title="Chat" fallbackHref="/(tabs)/orders" />
+        <BackHeader title="Chat" fallbackHref="/(tabs)/orders" variant="brand" />
         <View style={styles.empty}>
           <Ionicons name="chatbubble-ellipses-outline" size={48} color={theme.colors.textMuted} />
           <Text style={styles.emptyText}>Pedido não encontrado</Text>
@@ -165,7 +165,7 @@ export default function OrderChatScreen() {
   if (order.status === 'cancelado') {
     return (
       <View style={styles.screen}>
-        <BackHeader title={title} fallbackHref={`/order/${order.id}`} />
+        <BackHeader title={title} fallbackHref={`/order/${order.id}`} variant="brand" />
         <View style={styles.empty}>
           <Text style={styles.emptyText}>Chat indisponível para pedidos cancelados.</Text>
         </View>
@@ -175,7 +175,7 @@ export default function OrderChatScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title={title} fallbackHref={`/order/${order.id}`} />
+      <BackHeader title={title} fallbackHref={`/order/${order.id}`} variant="brand" />
       <View style={styles.peerBanner}>
         <View
           style={[

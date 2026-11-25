@@ -142,7 +142,7 @@ export default function ConvenienciaHubScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Conveniência" fallbackHref="/(tabs)" />
+      <BackHeader title="Conveniência" subtitle="Peça agora e receba rapidinho" fallbackHref="/(tabs)" variant="brand" />
 
       <ScrollView
         style={styles.scroll}

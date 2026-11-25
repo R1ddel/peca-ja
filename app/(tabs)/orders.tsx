@@ -203,16 +203,19 @@ const styles = StyleSheet.create({
   content: { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl },
   tabHeader: {
     paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
+    paddingBottom: theme.spacing.md,
+    backgroundColor: theme.colors.primary,
+    borderBottomLeftRadius: theme.radius.xl,
+    borderBottomRightRadius: theme.radius.xl,
   },
   tabTitle: {
     fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.text,
+    fontWeight: theme.fontWeight.extrabold,
+    color: theme.colors.white,
   },
   tabSub: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textMuted,
+    color: 'rgba(255,255,255,0.88)',
     marginTop: 2,
   },
   sectionTitle: {
@@ -228,6 +231,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
+    ...theme.shadow.soft,
   },
   activeCard: {
     borderColor: theme.colors.primaryMuted,

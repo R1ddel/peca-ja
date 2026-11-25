@@ -10,7 +10,8 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { useFocusEffect, router } from 'expo-router';
 import { BusinessCard } from '@/components/BusinessCard';
 import { CategoryChip } from '@/components/CategoryChip';
@@ -294,50 +295,119 @@ export default function HomeScreen() {
   }
 
   const noticeCount = chatAlerts.length + couponNotices;
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <OrderAlertBanner />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <FadeInUp delay={20}>
-          <View style={styles.brandRow}>
-            <PecaJaLogo size="sm" showName />
-            <View style={styles.brandActions}>
+          <View style={[styles.heroHeader, { paddingTop: topInset + 8 }]}>
+            <View style={styles.brandRow}>
+              <PecaJaLogo size="sm" showName tone="onPrimary" />
+              <View style={styles.brandActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.favShortcut,
+                    noticeCount > 0 && styles.chatBellActive,
+                  ]}
+                  onPress={() => router.push('/notifications' as any)}
+                  accessibilityLabel={
+                    noticeCount > 0
+                      ? `${noticeCount} avisos, incluindo cupons das lojas`
+                      : 'Notificações e cupons das lojas'
+                  }
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={noticeCount > 0 ? 'notifications' : 'notifications-outline'}
+                    size={22}
+                    color={theme.colors.white}
+                  />
+                  {noticeCount > 0 ? (
+                    <View style={styles.chatBadge}>
+                      <Text style={styles.chatBadgeText}>
+                        {noticeCount > 9 ? '9+' : String(noticeCount)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.favShortcut}
+                  onPress={() => router.push('/favorites' as any)}
+                  accessibilityLabel="Favoritos"
+                  hitSlop={8}
+                >
+                  <Ionicons name="heart-outline" size={22} color={theme.colors.white} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.favShortcut}
+                  onPress={() => router.push('/cart' as any)}
+                  accessibilityLabel="Carrinho"
+                  hitSlop={8}
+                >
+                  <Ionicons name="bag-handle-outline" size={22} color={theme.colors.white} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.heroGreeting}>
+              <Text style={styles.heroGreetingText}>
+                Olá, {user?.name?.split(' ')[0] ?? 'bem-vindo'}
+              </Text>
+              <Text style={styles.heroGreetingSub}>
+                {openCount} comércios abertos perto de você
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.heroLocationBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                refreshLocationChip();
+                router.push('/permissions' as any);
+              }}
+            >
+              <Ionicons name="location" size={16} color={theme.colors.accent} />
+              <Text style={styles.heroLocationText} numberOfLines={1}>
+                {gpsLabel ?? user?.address?.split(',')[0] ?? 'Ativar localização'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
+
+            <View style={styles.heroSearchRow}>
+              <View style={styles.heroSearchBar}>
+                <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="O que você quer pedir hoje?"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
+                    <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
               <TouchableOpacity
-                style={[
-                  styles.favShortcut,
-                  noticeCount > 0 && styles.chatBellActive,
-                ]}
-                onPress={() => router.push('/notifications' as any)}
-                accessibilityLabel={
-                  noticeCount > 0
-                    ? `${noticeCount} avisos, incluindo cupons das lojas`
-                    : 'Notificações e cupons das lojas'
-                }
-                hitSlop={8}
+                style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+                activeOpacity={0.7}
+                onPress={openFilters}
               >
                 <Ionicons
-                  name={noticeCount > 0 ? 'notifications' : 'notifications-outline'}
+                  name="options-outline"
                   size={22}
-                  color={
-                    noticeCount > 0 ? theme.colors.primary : theme.colors.textMuted
-                  }
+                  color={activeFilterCount > 0 ? '#fff' : theme.colors.primary}
                 />
-                {noticeCount > 0 ? (
-                  <View style={styles.chatBadge}>
-                    <Text style={styles.chatBadgeText}>
-                      {noticeCount > 9 ? '9+' : String(noticeCount)}
-                    </Text>
+                {activeFilterCount > 0 && (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
                   </View>
-                ) : null}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.favShortcut}
-                onPress={() => router.push('/favorites' as any)}
-                accessibilityLabel="Favoritos"
-                hitSlop={8}
-              >
-                <Ionicons name="heart-outline" size={22} color={theme.colors.primary} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -395,31 +465,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        <FadeInUp delay={40}>
-          <View style={styles.greeting}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.greetingText}>
-                Olá, {user?.name?.split(' ')[0] ?? 'bem-vindo'}
-              </Text>
-              <Text style={styles.greetingSub}>{openCount} comércios abertos perto de você</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.locationBtn}
-              activeOpacity={0.8}
-              onPress={() => {
-                refreshLocationChip();
-                router.push('/permissions' as any);
-              }}
-            >
-              <Ionicons name="location" size={16} color={theme.colors.primary} />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {gpsLabel ?? user?.address?.split(',')[0] ?? 'Ativar localização'}
-              </Text>
-              <Ionicons name="chevron-down" size={14} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </FadeInUp>
-
         {/* Mapa só com pedido ativo (acompanhamento). Sem pedido, some da home. */}
         {liveDeliveryOrder ? (
           <FadeInUp delay={70}>
@@ -468,43 +513,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </FadeInUp>
         ) : null}
-
-        <FadeInUp delay={100}>
-          <View style={styles.searchRow}>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={20} color={theme.colors.textMuted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar produto, prato ou loja…"
-                placeholderTextColor={theme.colors.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                returnKeyType="search"
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
-                  <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
-              activeOpacity={0.7}
-              onPress={openFilters}
-            >
-              <Ionicons
-                name="options-outline"
-                size={22}
-                color={activeFilterCount > 0 ? '#fff' : theme.colors.text}
-              />
-              {activeFilterCount > 0 && (
-                <View style={styles.filterBadge}>
-                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        </FadeInUp>
 
         <FadeInUp delay={120}>
           <ScrollView
@@ -990,7 +998,16 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  scroll: { paddingHorizontal: theme.spacing.md, paddingTop: 10, paddingBottom: 24 },
+  scroll: { paddingHorizontal: theme.spacing.md, paddingBottom: 24 },
+  heroHeader: {
+    backgroundColor: theme.colors.primary,
+    marginHorizontal: -theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    borderBottomLeftRadius: theme.radius.xl,
+    borderBottomRightRadius: theme.radius.xl,
+  },
   brandRow: {
     paddingTop: theme.spacing.sm,
     paddingBottom: 2,
@@ -1006,11 +1023,60 @@ const styles = StyleSheet.create({
   favShortcut: {
     padding: 8,
     borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.primaryLight,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     position: 'relative',
   },
   chatBellActive: {
-    backgroundColor: theme.colors.accentSoft,
+    backgroundColor: 'rgba(255,184,0,0.35)',
+  },
+  heroGreeting: {
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
+  heroGreetingText: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.extrabold,
+    color: theme.colors.white,
+  },
+  heroGreetingSub: {
+    fontSize: theme.fontSize.sm,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 2,
+  },
+  heroLocationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: theme.radius.full,
+    gap: 4,
+    maxWidth: '100%',
+    marginBottom: theme.spacing.md,
+  },
+  heroLocationText: {
+    fontSize: 12,
+    color: theme.colors.white,
+    fontWeight: '600',
+    flexShrink: 1,
+    marginHorizontal: 4,
+  },
+  heroSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  heroSearchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: theme.spacing.md,
+    height: 48,
+    gap: theme.spacing.sm,
+    ...theme.shadow.soft,
   },
   chatBadge: {
     position: 'absolute',
@@ -1177,16 +1243,15 @@ const styles = StyleSheet.create({
   filterBtn: {
     width: 48,
     height: 48,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.primaryLight,
-    borderWidth: 1.5,
-    borderColor: theme.colors.primaryMuted,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.white,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    ...theme.shadow.soft,
   },
   filterBtnActive: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.secondary,
   },
   filterBadge: {
     position: 'absolute',

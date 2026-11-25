@@ -125,7 +125,7 @@ export default function ReportDriverScreen() {
   if (!order) {
     return (
       <MobileShell style={styles.screen}>
-        <BackHeader title="Denunciar entregador" fallbackHref="/(tabs)/orders" />
+        <BackHeader title="Denunciar entregador" fallbackHref="/(tabs)/orders" variant="brand" />
         <Text style={styles.missing}>Pedido não encontrado.</Text>
       </MobileShell>
     );
@@ -133,7 +133,7 @@ export default function ReportDriverScreen() {
 
   return (
     <MobileShell style={styles.screen}>
-      <BackHeader title="Denunciar conduta" fallbackHref={`/order/${order.id}`} />
+      <BackHeader title="Denunciar conduta" fallbackHref={`/order/${order.id}`} variant="brand" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.warn}>
           <Ionicons name="shield-checkmark" size={22} color="#991B1B" />

@@ -123,6 +123,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
+    ...theme.shadow.soft,
   },
   disabled: {
     opacity: 0.6,
@@ -131,8 +132,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   image: {
-    width: 80,
-    height: 80,
+    width: 88,
+    height: 88,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.borderLight,
   },

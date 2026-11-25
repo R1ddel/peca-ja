@@ -83,7 +83,7 @@ export default function PermissionsScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Permissões" fallbackHref="/(tabs)/profile" />
+      <BackHeader title="Permissões" fallbackHref="/(tabs)/profile" variant="brand" />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

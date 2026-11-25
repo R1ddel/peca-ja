@@ -55,7 +55,7 @@ export function OrderStatusTracker({ status, compact }: OrderStatusTrackerProps)
               <View
                 style={[
                   styles.circle,
-                  isActive && { backgroundColor: config.color },
+                  isActive && { backgroundColor: theme.colors.primary },
                   isCurrent && styles.circleCurrent,
                 ]}
               >
@@ -66,7 +66,12 @@ export function OrderStatusTracker({ status, compact }: OrderStatusTrackerProps)
                 />
               </View>
               {index < STATUS_ORDER.length - 1 && (
-                <View style={[styles.line, isActive && index < currentIndex && { backgroundColor: config.color }]} />
+                <View
+                  style={[
+                    styles.line,
+                    isActive && index < currentIndex && { backgroundColor: theme.colors.primary },
+                  ]}
+                />
               )}
             </View>
             <Text style={[styles.stepLabel, isActive && styles.stepLabelActive]} numberOfLines={2}>

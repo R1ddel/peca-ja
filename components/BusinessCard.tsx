@@ -284,11 +284,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
     marginBottom: theme.spacing.md,
-    shadowColor: theme.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 2,
+    ...theme.shadow.card,
     overflow: 'hidden',
   },
   denseCard: {
@@ -314,11 +310,11 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 140,
+    height: 152,
     backgroundColor: theme.colors.borderLight,
   },
   denseImage: {
-    height: 92,
+    height: 100,
   },
   compactImage: {
     width: 100,

@@ -16,6 +16,10 @@ type BackHeaderProps = {
   preferFallback?: boolean;
   /** Params opcionais ao usar fallback (ex.: restaurar busca). */
   fallbackParams?: Record<string, string>;
+  /** Cabeçalho verde institucional (referência visual do cliente). */
+  variant?: 'default' | 'brand';
+  right?: React.ReactNode;
+  subtitle?: string;
 };
 
 export function BackHeader({
@@ -23,9 +27,15 @@ export function BackHeader({
   fallbackHref = '/(tabs)',
   preferFallback = false,
   fallbackParams,
+  variant = 'default',
+  right,
+  subtitle,
 }: BackHeaderProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
+  const brand = variant === 'brand';
+  const iconColor = brand ? theme.colors.white : theme.colors.text;
+  const labelColor = brand ? theme.colors.white : theme.colors.primary;
 
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
@@ -45,7 +55,13 @@ export function BackHeader({
   }
 
   return (
-    <View style={[styles.wrapper, { paddingTop: topInset + 8 }]}>
+    <View
+      style={[
+        styles.wrapper,
+        brand && styles.wrapperBrand,
+        { paddingTop: topInset + 8 },
+      ]}
+    >
       <View style={styles.row}>
         <TouchableOpacity
           onPress={handleBack}
@@ -54,19 +70,29 @@ export function BackHeader({
           accessibilityLabel="Voltar"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
-          <Text style={styles.backLabel}>Voltar</Text>
+          <Ionicons name="arrow-back" size={22} color={iconColor} />
+          <Text style={[styles.backLabel, { color: labelColor }]}>Voltar</Text>
         </TouchableOpacity>
 
         {title ? (
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
+          <View style={styles.titleBlock}>
+            <Text
+              style={[styles.title, brand && styles.titleBrand]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {subtitle ? (
+              <Text style={[styles.subtitle, brand && styles.subtitleBrand]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         ) : (
           <View style={styles.titlePlaceholder} />
         )}
 
-        <View style={styles.rightSpacer} />
+        <View style={styles.rightSpacer}>{right}</View>
       </View>
     </View>
   );
@@ -88,6 +114,11 @@ const styles = StyleSheet.create({
       android: { elevation: 2 },
     }),
   },
+  wrapperBrand: {
+    backgroundColor: theme.colors.primary,
+    borderBottomWidth: 0,
+    ...theme.shadow.soft,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -105,14 +136,33 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: theme.fontWeight.semibold,
   },
-  title: {
+  titleBlock: {
     flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.sm,
+  },
+  title: {
     textAlign: 'center',
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.text,
-    paddingHorizontal: theme.spacing.sm,
+  },
+  titleBrand: {
+    color: theme.colors.white,
+  },
+  subtitle: {
+    marginTop: 2,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  subtitleBrand: {
+    color: 'rgba(255,255,255,0.85)',
   },
   titlePlaceholder: { flex: 1 },
-  rightSpacer: { minWidth: 88 },
+  rightSpacer: {
+    minWidth: 88,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
 });

@@ -80,7 +80,7 @@ export default function AddCardScreen() {
 
   return (
     <View style={styles.screen}>
-      <BackHeader title="Cadastrar cartão" fallbackHref="/cards" />
+      <BackHeader title="Cadastrar cartão" fallbackHref="/cards" variant="brand" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
