@@ -168,9 +168,18 @@ export interface Order {
   total: number;
   status: OrderStatus;
   address: string;
-  /** GPS do cliente (destino). Sempre preenchido de forma determinística. */
+  /**
+   * Ponto do cliente gravado na hora do pedido (plano 2).
+   * Não é o GPS ao vivo e não é preenchido com um pin inventado.
+   */
   deliveryLatitude?: number;
   deliveryLongitude?: number;
+  /** Quando o GPS (ou a cidade demo) foi salvo neste pedido. */
+  deliveryPinSavedAt?: string;
+  /** GPS ao vivo do celular do cliente (plano 1). Não substitui o ponto salvo. */
+  customerLiveLatitude?: number;
+  customerLiveLongitude?: number;
+  customerLiveAt?: string;
   /** GPS da loja (retirada). */
   businessLatitude?: number;
   businessLongitude?: number;

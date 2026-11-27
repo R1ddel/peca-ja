@@ -14,6 +14,8 @@ import {
   resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel } from '@/utils/deliveryTarget';
 import {
   formatDistanceKm,
   resolveBestRouteLeg,
@@ -39,16 +41,6 @@ function orderShop(order: Order): LatLng {
   return resolveBusinessCoords(order.businessId, order.businessName);
 }
 
-function orderCustomer(order: Order): LatLng {
-  if (isValidLatLng(order.deliveryLatitude, order.deliveryLongitude)) {
-    return {
-      latitude: order.deliveryLatitude as number,
-      longitude: order.deliveryLongitude as number,
-    };
-  }
-  return resolveDeliveryCoords(order.address);
-}
-
 export function DriverRouteMap({
   order,
   trackDriver = true,
@@ -62,7 +54,8 @@ export function DriverRouteMap({
   const [minutes, setMinutes] = useState(0);
 
   const shop = useMemo(() => orderShop(order), [order]);
-  const customer = useMemo(() => orderCustomer(order), [order]);
+  const customerTarget = useDeliveryTarget(order);
+  const customer = customerTarget.point ?? resolveDeliveryCoords(order.address || '');
   const phase: 'to_shop' | 'to_customer' =
     order.pickupVerifiedAt || order.status === 'saiu_entrega' ? 'to_customer' : 'to_shop';
   const destination = phase === 'to_shop' ? shop : customer;
@@ -153,6 +146,9 @@ export function DriverRouteMap({
           </Text>
         )}
       </View>
+      {customerTarget.source ? (
+        <Text style={styles.source}>{deliveryTargetLabel(customerTarget.source)}</Text>
+      ) : null}
 
       <View style={styles.pad}>
         <InAppGoogleMap
@@ -206,6 +202,14 @@ const styles = StyleSheet.create({
   },
   title: { fontWeight: '800', color: theme.colors.text, flex: 1 },
   meta: { color: theme.colors.primary, fontWeight: '700' },
+  source: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 14,
+    marginTop: -4,
+    marginBottom: 8,
+  },
   pad: { paddingHorizontal: 10 },
   btn: {
     margin: 12,

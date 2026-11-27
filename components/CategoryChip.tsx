@@ -2,6 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BusinessCategory, categoryConfig, theme } from '@/constants/theme';
+import { useIsMobileLayout } from '@/utils/mobileLayout';
 
 interface CategoryChipProps {
   category: BusinessCategory | 'todos';
@@ -17,6 +18,7 @@ export function CategoryChip({
   onPress,
   layout = 'circle',
 }: CategoryChipProps) {
+  const isMobile = useIsMobileLayout();
   const config =
     category === 'todos'
       ? { label: 'Todos', icon: 'grid', color: theme.colors.primary }
@@ -50,7 +52,7 @@ export function CategoryChip({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
-      style={styles.circleWrap}
+      style={[styles.circleWrap, isMobile && styles.circleWrapMobile]}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={config.label}
@@ -58,16 +60,24 @@ export function CategoryChip({
       <View
         style={[
           styles.circle,
+          isMobile && styles.circleMobile,
           selected && styles.circleSelected,
         ]}
       >
         <Ionicons
           name={config.icon as keyof typeof Ionicons.glyphMap}
-          size={22}
+          size={isMobile ? 20 : 22}
           color={selected ? theme.colors.white : theme.colors.primary}
         />
       </View>
-      <Text style={[styles.circleLabel, selected && styles.circleLabelSelected]} numberOfLines={1}>
+      <Text
+        style={[
+          styles.circleLabel,
+          isMobile && styles.circleLabelMobile,
+          selected && styles.circleLabelSelected,
+        ]}
+        numberOfLines={1}
+      >
         {config.label}
       </Text>
     </TouchableOpacity>
@@ -80,6 +90,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: theme.spacing.sm,
   },
+  circleWrapMobile: {
+    width: 68,
+    marginRight: 10,
+  },
   circle: {
     width: 56,
     height: 56,
@@ -91,6 +105,12 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     marginBottom: 6,
   },
+  circleMobile: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginBottom: 5,
+  },
   circleSelected: {
     backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primaryMuted,
@@ -100,6 +120,12 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.semibold,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+  },
+  circleLabelMobile: {
+    fontSize: 10,
+    lineHeight: 13,
+    width: '100%',
+    paddingHorizontal: 2,
   },
   circleLabelSelected: {
     color: theme.colors.primary,

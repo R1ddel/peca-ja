@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { theme } from '@/constants/theme';
+import { BrandHeroBackground } from '@/components/BrandHeroBackground';
 
 type BackHeaderProps = {
   title?: string;
@@ -54,46 +55,52 @@ export function BackHeader({
     router.replace(fallbackHref as any);
   }
 
-  return (
-    <View
-      style={[
-        styles.wrapper,
-        brand && styles.wrapperBrand,
-        { paddingTop: topInset + 8 },
-      ]}
-    >
-      <View style={styles.row}>
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Voltar"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="arrow-back" size={22} color={iconColor} />
-          <Text style={[styles.backLabel, { color: labelColor }]}>Voltar</Text>
-        </TouchableOpacity>
+  const body = (
+    <View style={styles.row}>
+      <TouchableOpacity
+        onPress={handleBack}
+        style={styles.backBtn}
+        accessibilityRole="button"
+        accessibilityLabel="Voltar"
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <Ionicons name="arrow-back" size={22} color={iconColor} />
+        <Text style={[styles.backLabel, { color: labelColor }]}>Voltar</Text>
+      </TouchableOpacity>
 
-        {title ? (
-          <View style={styles.titleBlock}>
-            <Text
-              style={[styles.title, brand && styles.titleBrand]}
-              numberOfLines={1}
-            >
-              {title}
+      {title ? (
+        <View style={styles.titleBlock}>
+          <Text style={[styles.title, brand && styles.titleBrand]} numberOfLines={1}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text style={[styles.subtitle, brand && styles.subtitleBrand]} numberOfLines={1}>
+              {subtitle}
             </Text>
-            {subtitle ? (
-              <Text style={[styles.subtitle, brand && styles.subtitleBrand]} numberOfLines={1}>
-                {subtitle}
-              </Text>
-            ) : null}
-          </View>
-        ) : (
-          <View style={styles.titlePlaceholder} />
-        )}
+          ) : null}
+        </View>
+      ) : (
+        <View style={styles.titlePlaceholder} />
+      )}
 
-        <View style={styles.rightSpacer}>{right}</View>
-      </View>
+      <View style={styles.rightSpacer}>{right}</View>
+    </View>
+  );
+
+  if (brand) {
+    return (
+      <BrandHeroBackground
+        style={[styles.wrapper, styles.wrapperBrand, { paddingTop: topInset + 8 }]}
+        rounded
+      >
+        {body}
+      </BrandHeroBackground>
+    );
+  }
+
+  return (
+    <View style={[styles.wrapper, { paddingTop: topInset + 8 }]}>
+      {body}
     </View>
   );
 }
@@ -115,7 +122,7 @@ const styles = StyleSheet.create({
     }),
   },
   wrapperBrand: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'transparent',
     borderBottomWidth: 0,
     ...theme.shadow.soft,
   },

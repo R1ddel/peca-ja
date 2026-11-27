@@ -100,8 +100,8 @@ export default function CheckoutScreen() {
   const [gpsCanAsk, setGpsCanAsk] = useState(true);
   const [gpsAdjustNote, setGpsAdjustNote] = useState<string | null>(null);
   const [checkoutGps, setCheckoutGps] = useState<{
-    deliveryLatitude: number;
-    deliveryLongitude: number;
+    deliveryLatitude?: number;
+    deliveryLongitude?: number;
     businessLatitude: number;
     businessLongitude: number;
   } | null>(null);
@@ -329,12 +329,14 @@ export default function CheckoutScreen() {
     try {
       let latitude: number | null = null;
       let longitude: number | null = null;
+      let pinFromFix = false;
 
       // Cidade demo (Mucugê no link público): não espera o GPS do aparelho para liberar o Pix.
       const demo = getActiveDemoLocation();
       if (demo) {
         latitude = demo.latitude;
         longitude = demo.longitude;
+        pinFromFix = true;
       }
 
       let perm = demo
@@ -362,6 +364,7 @@ export default function CheckoutScreen() {
           ]);
           latitude = currentLocation.coords.latitude;
           longitude = currentLocation.coords.longitude;
+          pinFromFix = true;
         } catch {
           /* cai no fallback abaixo */
         }
@@ -388,14 +391,15 @@ export default function CheckoutScreen() {
 
       const merchant = await resolveMerchantPinForBusinessId(business?.id || '');
       const nextGps = {
-        deliveryLatitude: latitude,
-        deliveryLongitude: longitude,
+        ...(pinFromFix && latitude != null && longitude != null
+          ? { deliveryLatitude: latitude, deliveryLongitude: longitude }
+          : {}),
         businessLatitude: merchant.latitude,
         businessLongitude: merchant.longitude,
       };
       checkoutGpsRef.current = nextGps;
       setCheckoutGps(nextGps);
-      setGpsReady(true);
+      setGpsReady(pinFromFix);
       setGpsCanAsk(true);
 
       const distanceInMeters = await calculateFreeRouteDistance(
@@ -945,14 +949,14 @@ export default function CheckoutScreen() {
                     ? 'Ligando o GPS…'
                     : gpsReady
                       ? 'GPS ligado'
-                      : 'Ative o GPS para a entrega'}
+                      : 'GPS do celular indisponível'}
                 </Text>
                 <Text style={styles.gpsBannerText}>
                   {gpsLoading
                     ? 'Estamos lendo onde você está para o motoboy chegar no ponto certo.'
                     : gpsReady
-                      ? 'O ponto do mapa é onde você está agora. Faça o pedido nesse lugar.'
-                      : 'Sem o GPS o motoboy não acha a porta. Toque uma vez para ligar.'}
+                      ? 'Esse ponto fica salvo neste pedido. Se o GPS cair na corrida, a rota usa ele.'
+                      : 'Sem o GPS agora, a corrida usa o endereço. Se o celular voltar a localizar, a rota usa o GPS.'}
                 </Text>
               </View>
             </View>

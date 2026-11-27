@@ -47,10 +47,9 @@ import {
   seedDriverLeagueDemo as runLeagueSeed,
   LEAGUE_ORDER_PREFIX,
 } from '@/utils/seedDriverLeagueDemo';
-import {
-  isValidLatLng,
-  resolveDeliveryCoords,
-} from '@/utils/orderGeo';
+import { isValidLatLng } from '@/utils/orderGeo';
+import { getActiveDemoLocation } from '@/utils/demoLocation';
+import * as Location from 'expo-location';
 import { resolveMerchantPinFromBusiness } from '@/utils/merchantPin';
 import {
   fleetClaimRemote,
@@ -198,10 +197,9 @@ const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 const ORDERS_KEY = '@pecaja_orders';
 
 function ensureOrderGeo(order: Order): Order {
-  const delivery = resolveDeliveryCoords(order.address, {
-    latitude: order.deliveryLatitude,
-    longitude: order.deliveryLongitude,
-  });
+  const hasDelivery = isValidLatLng(order.deliveryLatitude, order.deliveryLongitude);
+  const deliveryLatitude = hasDelivery ? order.deliveryLatitude : undefined;
+  const deliveryLongitude = hasDelivery ? order.deliveryLongitude : undefined;
   const business = isValidLatLng(order.businessLatitude, order.businessLongitude)
     ? {
         latitude: order.businessLatitude as number,
@@ -215,8 +213,8 @@ function ensureOrderGeo(order: Order): Order {
       );
 
   if (
-    order.deliveryLatitude === delivery.latitude &&
-    order.deliveryLongitude === delivery.longitude &&
+    order.deliveryLatitude === deliveryLatitude &&
+    order.deliveryLongitude === deliveryLongitude &&
     order.businessLatitude === business.latitude &&
     order.businessLongitude === business.longitude
   ) {
@@ -224,8 +222,8 @@ function ensureOrderGeo(order: Order): Order {
   }
   return {
     ...order,
-    deliveryLatitude: delivery.latitude,
-    deliveryLongitude: delivery.longitude,
+    deliveryLatitude,
+    deliveryLongitude,
     businessLatitude: business.latitude,
     businessLongitude: business.longitude,
   };
@@ -468,10 +466,10 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       const paid = !!params.paymentConfirmed && !cashOnDelivery;
       const orderId = `PJ${Date.now().toString().slice(-8)}`;
       const { pickupCode, deliveryCode } = generateOrderVerificationCodes();
-      const delivery = resolveDeliveryCoords(params.address, {
-        latitude: params.deliveryLatitude,
-        longitude: params.deliveryLongitude,
-      });
+      const hasDeliveryPin = isValidLatLng(
+        params.deliveryLatitude,
+        params.deliveryLongitude
+      );
       const shopCoords = isValidLatLng(
         params.businessLatitude,
         params.businessLongitude
@@ -500,8 +498,9 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
           deliveryBy: params.deliveryBy ?? business?.deliveryBy ?? 'app',
           city: params.city?.trim() || business?.city,
           address: params.address,
-          deliveryLatitude: delivery.latitude,
-          deliveryLongitude: delivery.longitude,
+          deliveryLatitude: hasDeliveryPin ? params.deliveryLatitude : undefined,
+          deliveryLongitude: hasDeliveryPin ? params.deliveryLongitude : undefined,
+          deliveryPinSavedAt: hasDeliveryPin ? now : undefined,
           businessLatitude: shopCoords.latitude,
           businessLongitude: shopCoords.longitude,
           paymentMethod: params.paymentMethod,
@@ -1473,6 +1472,70 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       myOrders.filter((o) => o.status !== 'entregue' && o.status !== 'cancelado'),
     [myOrders]
   );
+  const liveOrderKey = activeOrders.map((order) => order.id).join('|');
+
+  useEffect(() => {
+    if (isLoading || !user?.id || !liveOrderKey) return;
+    if (getActiveDemoLocation()) return;
+    const ids = liveOrderKey.split('|');
+    let alive = true;
+    let sub: Location.LocationSubscription | null = null;
+
+    const push = (latitude: number, longitude: number) => {
+      if (!alive || getActiveDemoLocation()) return;
+      const at = new Date().toISOString();
+      setOrders((prev) => {
+        let changed = false;
+        const next = prev.map((order) => {
+          if (!ids.includes(order.id)) return order;
+          if (order.status === 'entregue' || order.status === 'cancelado') return order;
+          const moved =
+            order.customerLiveLatitude == null ||
+            Math.abs(order.customerLiveLatitude - latitude) > 0.00015 ||
+            Math.abs((order.customerLiveLongitude ?? 0) - longitude) > 0.00015;
+          const age = Date.now() - +new Date(order.customerLiveAt || 0);
+          if (!moved && age < 20_000) return order;
+          changed = true;
+          return {
+            ...order,
+            customerLiveLatitude: latitude,
+            customerLiveLongitude: longitude,
+            customerLiveAt: at,
+          };
+        });
+        return changed ? next : prev;
+      });
+    };
+
+    void (async () => {
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (!alive || perm.status !== 'granted') return;
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!alive) return;
+        push(current.coords.latitude, current.coords.longitude);
+        sub = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            distanceInterval: 25,
+            timeInterval: 15000,
+          },
+          (pos) => {
+            push(pos.coords.latitude, pos.coords.longitude);
+          }
+        );
+      } catch {
+        // GPS ao vivo falhou: a rota usa o ponto salvo no pedido e, depois, o endereço.
+      }
+    })();
+
+    return () => {
+      alive = false;
+      sub?.remove();
+    };
+  }, [isLoading, user?.id, liveOrderKey]);
 
   return (
     <OrdersContext.Provider

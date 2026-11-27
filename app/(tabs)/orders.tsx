@@ -65,11 +65,7 @@ export default function OrdersScreen() {
     return (
       <MobileShell style={styles.emptyShell}>
         <Tabs.Screen options={{ headerShown: false }} />
-        <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
-          <Text style={styles.tabTitle}>Pedidos</Text>
-          <Text style={styles.tabSub}>Acompanhe tudo em um só lugar</Text>
-        </View>
-        <View style={styles.emptyContainer}>
+        <View style={[styles.emptyContainer, { paddingTop: topInset + 8 }]}>
           <View style={styles.emptyIcon}>
             <Ionicons name="receipt-outline" size={48} color={theme.colors.primary} />
           </View>
@@ -88,16 +84,11 @@ export default function OrdersScreen() {
   return (
     <MobileShell style={styles.container}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
-        <Text style={styles.tabTitle}>Pedidos</Text>
-        <Text style={styles.tabSub}>
-          {activeOrders.length > 0
-            ? `${activeOrders.length} em andamento`
-            : 'Histórico e recompra'}
-        </Text>
-      </View>
       <OrderAlertBanner />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: topInset + 8 }]}
+      >
         {activeOrders.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Em andamento</Text>
@@ -201,23 +192,6 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   content: { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl },
-  tabHeader: {
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
-    backgroundColor: theme.colors.primary,
-    borderBottomLeftRadius: theme.radius.xl,
-    borderBottomRightRadius: theme.radius.xl,
-  },
-  tabTitle: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.extrabold,
-    color: theme.colors.white,
-  },
-  tabSub: {
-    fontSize: theme.fontSize.sm,
-    color: 'rgba(255,255,255,0.88)',
-    marginTop: 2,
-  },
   sectionTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.bold,

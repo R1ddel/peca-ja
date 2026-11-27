@@ -20,6 +20,8 @@ import {
   resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel } from '@/utils/deliveryTarget';
 import { buildDeliveryLeg, resolveBestRouteLeg } from '@/utils/driverRoute';
 import { useDriverLivePosition } from '@/hooks/useDriverLivePosition';
 
@@ -41,16 +43,6 @@ function shopOf(order: Order): LatLng {
   return resolveBusinessCoords(order.businessId, order.businessName);
 }
 
-function customerOf(order: Order): LatLng {
-  if (isValidLatLng(order.deliveryLatitude, order.deliveryLongitude)) {
-    return {
-      latitude: order.deliveryLatitude as number,
-      longitude: order.deliveryLongitude as number,
-    };
-  }
-  return resolveDeliveryCoords(order.address);
-}
-
 export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Props) {
   const mapRef = useRef<MapView>(null);
   const live = useDriverLivePosition(order.driverId);
@@ -61,7 +53,8 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Pr
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
 
   const shop = useMemo(() => shopOf(order), [order]);
-  const customer = useMemo(() => customerOf(order), [order]);
+  const customerTarget = useDeliveryTarget(order);
+  const customer = customerTarget.point ?? resolveDeliveryCoords(order.address || '');
   const toCustomer = !!order.pickupVerifiedAt || order.status === 'saiu_entrega';
 
   useEffect(() => {
@@ -174,7 +167,14 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Pr
           />
         ) : null}
         <Marker coordinate={shop} title={order.businessName} pinColor="#F59E0B" />
-        <Marker coordinate={customer} title={customerLabel} pinColor="#0EA5E9" />
+        <Marker
+          coordinate={customer}
+          title={customerLabel}
+          description={
+            customerTarget.source ? deliveryTargetLabel(customerTarget.source) : undefined
+          }
+          pinColor="#0EA5E9"
+        />
         {driverPos ? (
           <Marker coordinate={driverPos} title={order.driverName || 'Entregador'}>
             <View style={styles.bikePin}>
@@ -185,7 +185,8 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Pr
       </MapView>
       {!driverPos ? (
         <Text style={styles.hint}>
-          O ponto verde é o motoboy. Ele aparece assim que o GPS da corrida atualizar.
+          O ponto do motoboy aparece assim que o GPS da corrida atualizar.
+          {customerTarget.source ? ` ${deliveryTargetLabel(customerTarget.source)}.` : ''}
         </Text>
       ) : (
         <Text style={styles.hint}>
@@ -194,6 +195,7 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 220 }: Pr
                 viewer === 'merchant' ? 'do cliente' : 'com o seu pedido'
               }`
             : `${order.driverName || 'Motoboy'} está indo buscar o pedido na loja`}
+          {customerTarget.source ? ` · ${deliveryTargetLabel(customerTarget.source)}` : ''}
         </Text>
       )}
     </View>

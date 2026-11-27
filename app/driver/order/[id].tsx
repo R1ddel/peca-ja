@@ -35,6 +35,8 @@ import { DriverGpsBanner } from '@/components/DriverGpsBanner';
 import { merchantOrderLabel } from '@/utils/merchantOrderNumber';
 import { OrderPersonCard } from '@/components/OrderPersonCard';
 import { theme } from '@/constants/theme';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel } from '@/utils/deliveryTarget';
 
 const ACCENT = '#7C3AED';
 
@@ -48,6 +50,7 @@ export default function DriverOrderDetailScreen() {
   const id = paramStr(useLocalSearchParams<{ id?: string }>().id);
   const { getOrder, assignDriverToOrder, releaseDriverFromOrder } = useOrders();
   const order = getOrder(id);
+  const customerTarget = useDeliveryTarget(order ?? null);
 
   const [fleetId, setFleetId] = useState<string | null>(null);
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -277,6 +280,9 @@ export default function DriverOrderDetailScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.navTitle}>Endereço do cliente</Text>
             <Text style={styles.navSub}>{order.address}</Text>
+            {customerTarget.source ? (
+              <Text style={styles.navSub}>{deliveryTargetLabel(customerTarget.source)}</Text>
+            ) : null}
             <View style={styles.gpsRow}>
               <TouchableOpacity
                 style={styles.wazeBtn}
@@ -284,8 +290,12 @@ export default function DriverOrderDetailScreen() {
                   void openWazeToPlace({
                     address: order.address,
                     label: order.customerName || 'Cliente',
-                    latitude: order.deliveryLatitude,
-                    longitude: order.deliveryLongitude,
+                    latitude: customerTarget.precise
+                      ? customerTarget.point?.latitude
+                      : undefined,
+                    longitude: customerTarget.precise
+                      ? customerTarget.point?.longitude
+                      : undefined,
                   })
                 }
               >
@@ -297,8 +307,12 @@ export default function DriverOrderDetailScreen() {
                   void openGoogleToPlace({
                     address: order.address,
                     label: order.customerName || 'Cliente',
-                    latitude: order.deliveryLatitude,
-                    longitude: order.deliveryLongitude,
+                    latitude: customerTarget.precise
+                      ? customerTarget.point?.latitude
+                      : undefined,
+                    longitude: customerTarget.precise
+                      ? customerTarget.point?.longitude
+                      : undefined,
                   })
                 }
               >

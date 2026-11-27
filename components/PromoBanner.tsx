@@ -9,6 +9,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -16,10 +17,11 @@ import { theme, BusinessCategory } from '@/constants/theme';
 import { getPromoBanners, getRestaurantPromoBanners, PromoBannerItem } from '@/data/businesses';
 import { Business } from '@/types';
 import { useDemoLocation } from '@/hooks/useDemoLocation';
+import { isMobileWidth } from '@/utils/mobileLayout';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-/** Home já tem padding horizontal md dos dois lados. */
-const BANNER_WIDTH = SCREEN_WIDTH - theme.spacing.md * 4;
+/** Desktop/web largo: mantém o cálculo legado (layout aprovado). */
+const DESKTOP_SCREEN_WIDTH = Dimensions.get('window').width;
+const DESKTOP_BANNER_WIDTH = DESKTOP_SCREEN_WIDTH - theme.spacing.md * 4;
 const GAP = theme.spacing.sm;
 const INTERVAL_MS = 3500;
 
@@ -36,6 +38,15 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
   const [activeIndex, setActiveIndex] = useState(0);
   const pausedRef = useRef(false);
   const { version } = useDemoLocation();
+  const { width: viewportW } = useWindowDimensions();
+  const mobile = isMobileWidth(viewportW);
+
+  const bannerWidth = mobile
+    ? Math.max(280, viewportW - theme.spacing.md * 2)
+    : DESKTOP_BANNER_WIDTH;
+  const bannerHeight = mobile ? Math.round(bannerWidth * 0.48) : 200;
+  const step = bannerWidth + GAP;
+
   const banners = useMemo(() => {
     const ads = getRestaurantPromoBanners(businesses);
     if (ads.length) return ads;
@@ -46,7 +57,7 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
     indexRef.current = 0;
     setActiveIndex(0);
     scrollRef.current?.scrollTo({ x: 0, animated: false });
-  }, [version]);
+  }, [version, bannerWidth]);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -58,17 +69,17 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
       indexRef.current = next;
       setActiveIndex(next);
       scrollRef.current?.scrollTo({
-        x: next * (BANNER_WIDTH + GAP),
+        x: next * step,
         animated: true,
       });
     }, INTERVAL_MS);
 
     return () => clearInterval(timer);
-  }, [banners.length, version]);
+  }, [banners.length, version, step]);
 
   function onScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const x = e.nativeEvent.contentOffset.x;
-    const index = Math.round(x / (BANNER_WIDTH + GAP));
+    const index = Math.round(x / step);
     const safe = Math.max(0, Math.min(index, banners.length - 1));
     indexRef.current = safe;
     setActiveIndex(safe);
@@ -106,7 +117,7 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
-        snapToInterval={BANNER_WIDTH + GAP}
+        snapToInterval={step}
         snapToAlignment="start"
         disableIntervalMomentum
         contentContainerStyle={styles.container}
@@ -124,7 +135,11 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
         {banners.map((banner) => (
           <TouchableOpacity
             key={`${version}-${banner.id}`}
-            style={styles.bannerWrapper}
+            style={[
+              styles.bannerWrapper,
+              { width: bannerWidth, height: bannerHeight },
+              mobile && styles.bannerWrapperMobile,
+            ]}
             activeOpacity={0.92}
             onPress={() => handlePress(banner)}
             accessibilityRole="button"
@@ -134,15 +149,21 @@ export function PromoBanner({ businesses, onSelectCategory }: PromoBannerProps) 
             <LinearGradient
               colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.72)']}
               locations={[0, 0.42, 1]}
-              style={styles.gradient}
+              style={[styles.gradient, mobile && styles.gradientMobile]}
             >
               <View style={styles.offerPill}>
                 <Text style={styles.offerPillText}>Oferta</Text>
               </View>
-              <Text style={styles.subtitle} numberOfLines={1}>
+              <Text
+                style={[styles.subtitle, mobile && styles.subtitleMobile]}
+                numberOfLines={1}
+              >
                 {banner.subtitle}
               </Text>
-              <Text style={styles.title} numberOfLines={2}>
+              <Text
+                style={[styles.title, mobile && styles.titleMobile]}
+                numberOfLines={2}
+              >
                 {banner.title}
               </Text>
             </LinearGradient>
@@ -170,12 +191,15 @@ const styles = StyleSheet.create({
     gap: GAP,
   },
   bannerWrapper: {
-    width: BANNER_WIDTH,
+    width: DESKTOP_BANNER_WIDTH,
     height: 200,
     borderRadius: theme.radius.xl,
     overflow: 'hidden',
     backgroundColor: theme.colors.secondary,
     ...theme.shadow.card,
+  },
+  bannerWrapperMobile: {
+    borderRadius: theme.radius.lg,
   },
   image: {
     width: '100%',
@@ -185,6 +209,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
     padding: theme.spacing.md,
+  },
+  gradientMobile: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 20,
   },
   offerPill: {
     alignSelf: 'flex-start',
@@ -206,11 +235,18 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.white,
   },
+  titleMobile: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
   subtitle: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
     color: 'rgba(255,255,255,0.92)',
     marginBottom: 2,
+  },
+  subtitleMobile: {
+    fontSize: 12,
   },
   dots: {
     flexDirection: 'row',

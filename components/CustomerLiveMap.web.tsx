@@ -12,6 +12,8 @@ import {
   resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel } from '@/utils/deliveryTarget';
 import { useDriverLivePosition } from '@/hooks/useDriverLivePosition';
 import { InAppGoogleMap } from '@/components/InAppGoogleMap';
 
@@ -31,16 +33,6 @@ function shopOf(order: Order): LatLng {
   return resolveBusinessCoords(order.businessId, order.businessName);
 }
 
-function customerOf(order: Order): LatLng {
-  if (isValidLatLng(order.deliveryLatitude, order.deliveryLongitude)) {
-    return {
-      latitude: order.deliveryLatitude as number,
-      longitude: order.deliveryLongitude as number,
-    };
-  }
-  return resolveDeliveryCoords(order.address);
-}
-
 export function CustomerLiveMap({ order, viewer = 'customer', height = 240 }: Props) {
   const live = useDriverLivePosition(order.driverId);
   const driverPos = live
@@ -49,7 +41,8 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 240 }: Pr
   const updatedAt = live?.at ?? null;
 
   const shop = useMemo(() => shopOf(order), [order]);
-  const customer = useMemo(() => customerOf(order), [order]);
+  const customerTarget = useDeliveryTarget(order);
+  const customer = customerTarget.point ?? resolveDeliveryCoords(order.address || '');
   const toCustomer = !!order.pickupVerifiedAt || order.status === 'saiu_entrega';
   const dest = toCustomer ? customer : shop;
   const origin = driverPos || shop;
@@ -90,6 +83,9 @@ export function CustomerLiveMap({ order, viewer = 'customer', height = 240 }: Pr
           height={height}
         />
       </View>
+      {customerTarget.source ? (
+        <Text style={styles.source}>{deliveryTargetLabel(customerTarget.source)}</Text>
+      ) : null}
     </View>
   );
 }
@@ -119,4 +115,11 @@ const styles = StyleSheet.create({
   },
   headMeta: { fontSize: 11, color: theme.colors.textMuted },
   pad: { padding: 10, paddingTop: 0 },
+  source: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
 });

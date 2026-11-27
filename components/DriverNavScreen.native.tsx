@@ -17,9 +17,10 @@ import { useOrders } from '@/context/OrdersContext';
 import {
   isValidLatLng,
   resolveBusinessCoords,
-  resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel } from '@/utils/deliveryTarget';
 import {
   buildDeliveryLeg,
   formatDistanceKm,
@@ -28,7 +29,12 @@ import {
   routeKey,
   type RouteLeg,
 } from '@/utils/driverRoute';
-import { openGoogleNavigate, openWazeNavigate } from '@/utils/openMaps';
+import {
+  openGoogleNavigate,
+  openGoogleToPlace,
+  openWazeNavigate,
+  openWazeToPlace,
+} from '@/utils/openMaps';
 
 const ACCENT = '#7C3AED';
 const ARRIVE_M = 45;
@@ -51,20 +57,6 @@ function shopOf(order: {
     };
   }
   return resolveBusinessCoords(order.businessId, order.businessName);
-}
-
-function customerOf(order: {
-  address: string;
-  deliveryLatitude?: number;
-  deliveryLongitude?: number;
-}): LatLng {
-  if (isValidLatLng(order.deliveryLatitude, order.deliveryLongitude)) {
-    return {
-      latitude: order.deliveryLatitude as number,
-      longitude: order.deliveryLongitude as number,
-    };
-  }
-  return resolveDeliveryCoords(order.address);
 }
 
 /**
@@ -92,7 +84,8 @@ export default function DriverNavScreen() {
   headingRef.current = heading;
 
   const shop = useMemo(() => (order ? shopOf(order) : null), [order]);
-  const customer = useMemo(() => (order ? customerOf(order) : null), [order]);
+  const customerTarget = useDeliveryTarget(order ?? null);
+  const customer = customerTarget.point;
 
   const phase: 'to_shop' | 'to_customer' = order?.pickupVerifiedAt
     ? 'to_customer'
@@ -237,6 +230,10 @@ export default function DriverNavScreen() {
     if (!destination) return;
     setOpening('waze');
     try {
+      if (phase === 'to_customer' && !customerTarget.precise) {
+        await openWazeToPlace({ address: order?.address, label: destTitle });
+        return;
+      }
       await openWazeNavigate(destination, destTitle);
     } finally {
       setOpening(null);
@@ -247,6 +244,10 @@ export default function DriverNavScreen() {
     if (!destination) return;
     setOpening('google');
     try {
+      if (phase === 'to_customer' && !customerTarget.precise) {
+        await openGoogleToPlace({ address: order?.address, label: destTitle });
+        return;
+      }
       await openGoogleNavigate(destination);
     } finally {
       setOpening(null);
@@ -306,8 +307,12 @@ export default function DriverNavScreen() {
         />
         <Marker
           coordinate={customer}
-          title="Cliente — ponto exato"
-          description={order.address}
+          title="Pedido"
+          description={
+            customerTarget.source
+              ? deliveryTargetLabel(customerTarget.source)
+              : order.address
+          }
           pinColor="#10B981"
         />
         {destination ? (
@@ -375,8 +380,11 @@ export default function DriverNavScreen() {
         <View style={styles.pinRow}>
           <Ionicons name="pin" size={16} color="#EF4444" />
           <Text style={styles.pinText}>
-            Destino fixo · {destination.latitude.toFixed(5)},{' '}
-            {destination.longitude.toFixed(5)}
+            {phase === 'to_customer' && customerTarget.source
+              ? deliveryTargetLabel(customerTarget.source)
+              : 'Ponto da loja'}
+            {' · '}
+            {destination.latitude.toFixed(5)}, {destination.longitude.toFixed(5)}
           </Text>
         </View>
 

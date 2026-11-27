@@ -20,6 +20,8 @@ import {
   resolveDeliveryCoords,
   type LatLng,
 } from '@/utils/orderGeo';
+import { useDeliveryTarget } from '@/hooks/useDeliveryTarget';
+import { deliveryTargetLabel, deliveryTargetShort } from '@/utils/deliveryTarget';
 import {
   buildDeliveryLeg,
   formatDistanceKm,
@@ -48,16 +50,6 @@ function orderShop(order: Order): LatLng {
   return resolveBusinessCoords(order.businessId, order.businessName);
 }
 
-function orderCustomer(order: Order): LatLng {
-  if (isValidLatLng(order.deliveryLatitude, order.deliveryLongitude)) {
-    return {
-      latitude: order.deliveryLatitude as number,
-      longitude: order.deliveryLongitude as number,
-    };
-  }
-  return resolveDeliveryCoords(order.address);
-}
-
 /**
  * Mapa da corrida: melhor rota por ruas (OSRM) + GPS do motoboy.
  */
@@ -75,7 +67,8 @@ export function DriverRouteMap({
   const [routing, setRouting] = useState(false);
 
   const shop = useMemo(() => orderShop(order), [order]);
-  const customer = useMemo(() => orderCustomer(order), [order]);
+  const customerTarget = useDeliveryTarget(order);
+  const customer = customerTarget.point ?? resolveDeliveryCoords(order.address || '');
 
   const phase: 'to_shop' | 'to_customer' = order.pickupVerifiedAt
     ? 'to_customer'
@@ -291,8 +284,12 @@ export function DriverRouteMap({
             />
             <Marker
               coordinate={customer}
-              title="Cliente"
-              description={order.address}
+              title="Pedido"
+              description={
+                customerTarget.source
+                  ? deliveryTargetLabel(customerTarget.source)
+                  : order.address
+              }
               pinColor="#059669"
             />
             {driverPos ? (
@@ -330,7 +327,11 @@ export function DriverRouteMap({
           <Text style={styles.statVal}>
             {phase === 'to_shop' ? 'Loja' : 'Cliente'}
           </Text>
-          <Text style={styles.statLbl}>destino</Text>
+          <Text style={styles.statLbl}>
+            {phase === 'to_customer' && customerTarget.source
+              ? deliveryTargetShort(customerTarget.source)
+              : 'destino'}
+          </Text>
         </View>
       </View>
 

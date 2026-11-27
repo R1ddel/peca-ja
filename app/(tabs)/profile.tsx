@@ -24,7 +24,8 @@ import { useOrders } from '@/context/OrdersContext';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { FadeInUp } from '@/components/FadeInUp';
-import { BackHeader } from '@/components/BackHeader';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { theme } from '@/constants/theme';
 import {
   LOYALTY_TIERS,
@@ -74,6 +75,8 @@ const DEFAULT_COVER =
 
 export default function ProfileScreen() {
   useRequireAuth();
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
   const { user, logout, updateProfile, cloudAuth } = useAuth();
   const { myOrders } = useOrders();
   const { layout: homeLayout, setHomeCatalogLayout } = useHomeCatalogLayout();
@@ -445,20 +448,13 @@ export default function ProfileScreen() {
   return (
     <View style={styles.screen}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <BackHeader
-        title="Meu perfil"
-        subtitle="Gerencie sua conta e pedidos"
-        preferFallback
-        fallbackHref="/(tabs)"
-        variant="brand"
-      />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <FadeInUp delay={40}>
         <View style={styles.profileHeader}>
           <View style={styles.coverWrap}>
             <ImageBackground
               source={{ uri: user?.coverUrl || DEFAULT_COVER }}
-              style={styles.coverImage}
+              style={[styles.coverImage, { paddingTop: topInset + 8 }]}
               imageStyle={styles.coverImageStyle}
             >
               <View style={styles.coverOverlay} />

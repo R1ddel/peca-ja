@@ -9,10 +9,14 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, Tabs } from 'expo-router';
+import { useIsMobileLayout } from '@/utils/mobileLayout';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BrandHeroBackground } from '@/components/BrandHeroBackground';
 import { BusinessCard } from '@/components/BusinessCard';
 import { CategoryChip } from '@/components/CategoryChip';
 import { PromoBanner } from '@/components/PromoBanner';
@@ -297,120 +301,152 @@ export default function HomeScreen() {
   const noticeCount = chatAlerts.length + couponNotices;
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Constants.statusBarHeight ?? 0);
+  const isMobile = useIsMobileLayout();
+
+  const heroBody = (
+    <>
+      <View style={styles.brandRow}>
+        <PecaJaLogo size="sm" showName tone="onPrimary" />
+        <View style={styles.brandActions}>
+          <TouchableOpacity
+            style={[styles.favShortcut, noticeCount > 0 && styles.chatBellActive]}
+            onPress={() => router.push('/notifications' as any)}
+            accessibilityLabel={
+              noticeCount > 0
+                ? `${noticeCount} avisos, incluindo cupons das lojas`
+                : 'Notificações e cupons das lojas'
+            }
+            hitSlop={8}
+          >
+            <Ionicons
+              name={noticeCount > 0 ? 'notifications' : 'notifications-outline'}
+              size={22}
+              color={theme.colors.white}
+            />
+            {noticeCount > 0 ? (
+              <View style={styles.chatBadge}>
+                <Text style={styles.chatBadgeText}>
+                  {noticeCount > 9 ? '9+' : String(noticeCount)}
+                </Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.favShortcut}
+            onPress={() => router.push('/favorites' as any)}
+            accessibilityLabel="Favoritos"
+            hitSlop={8}
+          >
+            <Ionicons name="heart-outline" size={22} color={theme.colors.white} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.favShortcut}
+            onPress={() => router.push('/cart' as any)}
+            accessibilityLabel="Carrinho"
+            hitSlop={8}
+          >
+            <Ionicons name="bag-handle-outline" size={22} color={theme.colors.white} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={[styles.heroGreeting, isMobile && styles.heroGreetingMobile]}>
+        <Text style={[styles.heroGreetingText, isMobile && styles.heroGreetingTextMobile]}>
+          Olá, {user?.name?.split(' ')[0] ?? 'bem-vindo'}
+        </Text>
+        <Text style={[styles.heroGreetingSub, isMobile && styles.heroGreetingSubMobile]}>
+          {openCount} comércios abertos perto de você
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.heroLocationBtn, isMobile && styles.heroLocationBtnMobile]}
+        activeOpacity={0.85}
+        onPress={() => {
+          refreshLocationChip();
+          router.push('/permissions' as any);
+        }}
+      >
+        <Ionicons name="location" size={16} color={theme.colors.accent} />
+        <Text style={styles.heroLocationText} numberOfLines={1}>
+          {gpsLabel ?? user?.address?.split(',')[0] ?? 'Ativar localização'}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.8)" />
+      </TouchableOpacity>
+
+      <View style={[styles.heroSearchRow, isMobile && styles.heroSearchRowMobile]}>
+        <View style={styles.heroSearchBar}>
+          <Ionicons name="search" size={20} color={theme.colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="O que você quer pedir hoje?"
+            placeholderTextColor={theme.colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
+              <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          activeOpacity={0.7}
+          onPress={openFilters}
+        >
+          <Ionicons
+            name="options-outline"
+            size={22}
+            color={activeFilterCount > 0 ? '#fff' : theme.colors.primary}
+          />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <Tabs.Screen options={{ headerShown: false }} />
       <OrderAlertBanner />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scroll,
+          isMobile && { paddingBottom: 24 + Math.max(insets.bottom, 8) + 56 },
+        ]}
+      >
         <FadeInUp delay={20}>
-          <View style={[styles.heroHeader, { paddingTop: topInset + 8 }]}>
-            <View style={styles.brandRow}>
-              <PecaJaLogo size="sm" showName tone="onPrimary" />
-              <View style={styles.brandActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.favShortcut,
-                    noticeCount > 0 && styles.chatBellActive,
-                  ]}
-                  onPress={() => router.push('/notifications' as any)}
-                  accessibilityLabel={
-                    noticeCount > 0
-                      ? `${noticeCount} avisos, incluindo cupons das lojas`
-                      : 'Notificações e cupons das lojas'
-                  }
-                  hitSlop={8}
-                >
-                  <Ionicons
-                    name={noticeCount > 0 ? 'notifications' : 'notifications-outline'}
-                    size={22}
-                    color={theme.colors.white}
-                  />
-                  {noticeCount > 0 ? (
-                    <View style={styles.chatBadge}>
-                      <Text style={styles.chatBadgeText}>
-                        {noticeCount > 9 ? '9+' : String(noticeCount)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.favShortcut}
-                  onPress={() => router.push('/favorites' as any)}
-                  accessibilityLabel="Favoritos"
-                  hitSlop={8}
-                >
-                  <Ionicons name="heart-outline" size={22} color={theme.colors.white} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.favShortcut}
-                  onPress={() => router.push('/cart' as any)}
-                  accessibilityLabel="Carrinho"
-                  hitSlop={8}
-                >
-                  <Ionicons name="bag-handle-outline" size={22} color={theme.colors.white} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.heroGreeting}>
-              <Text style={styles.heroGreetingText}>
-                Olá, {user?.name?.split(' ')[0] ?? 'bem-vindo'}
-              </Text>
-              <Text style={styles.heroGreetingSub}>
-                {openCount} comércios abertos perto de você
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.heroLocationBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                refreshLocationChip();
-                router.push('/permissions' as any);
-              }}
-            >
-              <Ionicons name="location" size={16} color={theme.colors.accent} />
-              <Text style={styles.heroLocationText} numberOfLines={1}>
-                {gpsLabel ?? user?.address?.split(',')[0] ?? 'Ativar localização'}
-              </Text>
-              <Ionicons name="chevron-down" size={14} color="rgba(255,255,255,0.8)" />
-            </TouchableOpacity>
-
-            <View style={styles.heroSearchRow}>
-              <View style={styles.heroSearchBar}>
-                <Ionicons name="search" size={20} color={theme.colors.textMuted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="O que você quer pedir hoje?"
-                  placeholderTextColor={theme.colors.textMuted}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  returnKeyType="search"
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')} activeOpacity={0.7}>
-                    <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TouchableOpacity
-                style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
-                activeOpacity={0.7}
-                onPress={openFilters}
-              >
-                <Ionicons
-                  name="options-outline"
-                  size={22}
-                  color={activeFilterCount > 0 ? '#fff' : theme.colors.primary}
-                />
-                {activeFilterCount > 0 && (
-                  <View style={styles.filterBadge}>
-                    <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          <BrandHeroBackground
+            style={[
+              styles.heroHeader,
+              isMobile && styles.heroHeaderMobile,
+              { paddingTop: topInset + 8 },
+            ]}
+          >
+            {isMobile ? (
+              <LinearGradient
+                colors={[
+                  'rgba(0,168,107,0.72)',
+                  'rgba(0,168,107,0.32)',
+                  'rgba(0,168,107,0.06)',
+                  'transparent',
+                ]}
+                locations={[0, 0.34, 0.56, 1]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.heroMobileScrim}
+                pointerEvents="none"
+              />
+            ) : null}
+            {heroBody}
+          </BrandHeroBackground>
         </FadeInUp>
 
         {chatAlerts.length > 0 ? (
@@ -624,7 +660,10 @@ export default function HomeScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categories}
+              contentContainerStyle={[
+                styles.categories,
+                isMobile && styles.categoriesMobile,
+              ]}
             >
               {categories.map((cat) => (
                 <CategoryChip
@@ -637,48 +676,6 @@ export default function HomeScreen() {
                 />
               ))}
             </ScrollView>
-          </FadeInUp>
-        ) : null}
-
-        {!isProductSearch && selectedCategory === 'conveniencia' ? (
-          <FadeInUp delay={200}>
-            <TouchableOpacity
-              style={styles.convenienceCard}
-              activeOpacity={0.9}
-              onPress={() => router.push('/conveniencia' as any)}
-            >
-              <View style={styles.convenienceIcon}>
-                <Ionicons name="storefront" size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.convenienceTitle}>Abrir hub Conveniência</Text>
-                <Text style={styles.convenienceSub}>
-                  Produtos rápidos de várias lojas em um só lugar
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </TouchableOpacity>
-          </FadeInUp>
-        ) : null}
-
-        {!isProductSearch && selectedCategory === 'todos' ? (
-          <FadeInUp delay={200}>
-            <TouchableOpacity
-              style={styles.convenienceCard}
-              activeOpacity={0.9}
-              onPress={() => router.push('/conveniencia' as any)}
-            >
-              <View style={styles.convenienceIcon}>
-                <Ionicons name="storefront" size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.convenienceTitle}>Conveniência</Text>
-                <Text style={styles.convenienceSub}>
-                  Água, snacks e utilidades — peça agora
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </TouchableOpacity>
           </FadeInUp>
         ) : null}
 
@@ -884,9 +881,12 @@ export default function HomeScreen() {
                 {featured.length > 0 && (
                   <FadeInUp delay={200}>
                     <View style={styles.sectionHeader}>
-                      <Text style={styles.sectionTitle}>Em destaque</Text>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={styles.sectionTitle}>Destaques da sua cidade</Text>
+                        <Text style={styles.fairHint}>Parceiros em evidência perto de você</Text>
+                      </View>
                       {isVitrine ? (
-                        <Text style={styles.seeAllMuted}>{featured.length}</Text>
+                        <Text style={styles.seeAll}>Ver tudo</Text>
                       ) : (
                         <Text style={styles.sectionCount}>{featured.length}</Text>
                       )}
@@ -1000,13 +1000,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   scroll: { paddingHorizontal: theme.spacing.md, paddingBottom: 24 },
   heroHeader: {
-    backgroundColor: theme.colors.primary,
     marginHorizontal: -theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.lg,
     marginBottom: theme.spacing.md,
-    borderBottomLeftRadius: theme.radius.xl,
-    borderBottomRightRadius: theme.radius.xl,
+  },
+  heroHeaderMobile: {
+    minHeight: 268,
+    paddingBottom: theme.spacing.md,
+  },
+  heroMobileScrim: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   brandRow: {
     paddingTop: theme.spacing.sm,
@@ -1014,6 +1019,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 2,
   },
   brandActions: {
     flexDirection: 'row',
@@ -1032,16 +1038,30 @@ const styles = StyleSheet.create({
   heroGreeting: {
     marginTop: theme.spacing.md,
     marginBottom: theme.spacing.sm,
+    zIndex: 2,
+  },
+  heroGreetingMobile: {
+    maxWidth: '58%',
+    marginTop: theme.spacing.sm,
   },
   heroGreetingText: {
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.white,
   },
+  heroGreetingTextMobile: {
+    fontSize: 22,
+    lineHeight: 28,
+  },
   heroGreetingSub: {
     fontSize: theme.fontSize.sm,
     color: 'rgba(255,255,255,0.88)',
     marginTop: 2,
+  },
+  heroGreetingSubMobile: {
+    fontSize: 13,
+    lineHeight: 18,
+    paddingRight: 4,
   },
   heroLocationBtn: {
     flexDirection: 'row',
@@ -1054,6 +1074,11 @@ const styles = StyleSheet.create({
     gap: 4,
     maxWidth: '100%',
     marginBottom: theme.spacing.md,
+    zIndex: 2,
+  },
+  heroLocationBtnMobile: {
+    maxWidth: '62%',
+    marginBottom: theme.spacing.lg,
   },
   heroLocationText: {
     fontSize: 12,
@@ -1066,6 +1091,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.sm,
+    zIndex: 2,
+  },
+  heroSearchRowMobile: {
+    marginTop: 4,
   },
   heroSearchBar: {
     flex: 1,
@@ -1303,33 +1332,10 @@ const styles = StyleSheet.create({
   categories: {
     paddingBottom: theme.spacing.md,
   },
-  convenienceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: categoryConfig.conveniencia.color,
-    borderRadius: theme.radius.xl,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: theme.spacing.md,
-  },
-  convenienceIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  convenienceTitle: {
-    color: '#fff',
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.bold,
-  },
-  convenienceSub: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: theme.fontSize.xs,
-    marginTop: 2,
+  categoriesMobile: {
+    paddingBottom: theme.spacing.sm,
+    paddingRight: theme.spacing.sm,
+    alignItems: 'flex-start',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1339,8 +1345,8 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
   },
   sectionTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.bold,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.extrabold,
     color: theme.colors.text,
   },
   clearInline: {

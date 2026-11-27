@@ -187,6 +187,49 @@ export function getBusinessCoverSource(opts: {
   });
 }
 
+type MenuLike = {
+  image?: string | null;
+  images?: string[] | null;
+  popular?: boolean;
+  promo?: number | null;
+  price?: number;
+};
+
+/** URI de um produto do cardápio (popular → promo → primeiro com foto). */
+export function pickBusinessProductImageUri(menu?: MenuLike[] | null): string | null {
+  if (!menu?.length) return null;
+  const uriOf = (m: MenuLike) => {
+    const fromGallery = m.images?.find((u) => typeof u === 'string' && u.length > 0);
+    if (fromGallery) return fromGallery;
+    if (m.image && m.image.length > 0) return m.image;
+    return null;
+  };
+  const popular = menu.find((m) => m.popular && uriOf(m));
+  if (popular) return uriOf(popular);
+  const promo = menu.find((m) => m.promo != null && uriOf(m));
+  if (promo) return uriOf(promo);
+  for (const m of menu) {
+    const u = uriOf(m);
+    if (u) return u;
+  }
+  return null;
+}
+
+/**
+ * Capa comercial: foto de produto do cardápio; se não houver, cai na capa/logo.
+ */
+export function getBusinessProductCoverSource(opts: {
+  name: string;
+  category: BusinessCategory;
+  image?: string | null;
+  coverImage?: string | null;
+  menu?: MenuLike[] | null;
+}): ImageSourcePropType {
+  const product = pickBusinessProductImageUri(opts.menu);
+  if (product) return { uri: product };
+  return getBusinessCoverSource(opts);
+}
+
 /** Resolve logo a partir do pedido (usa catálogo atual quando o id existir). */
 export function getOrderBusinessLogoSource(opts: {
   businessId: string;

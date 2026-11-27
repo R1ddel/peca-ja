@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams, Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import { BrandHeroBackground } from '@/components/BrandHeroBackground';
 import { BusinessCard } from '@/components/BusinessCard';
 import {
   formatPrice,
@@ -204,7 +205,7 @@ export default function SearchScreen() {
   return (
     <View style={styles.container}>
       <Tabs.Screen options={{ headerShown: false }} />
-      <View style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
+      <BrandHeroBackground style={[styles.tabHeader, { paddingTop: topInset + 14 }]}>
         <Text style={styles.tabTitle}>Buscar no Peça Já</Text>
         <Text style={styles.tabSub}>Pratos, mercados e farmácias perto de você</Text>
         <View style={styles.searchBar}>
@@ -226,7 +227,7 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </BrandHeroBackground>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {!query.trim() ? (
@@ -487,9 +488,6 @@ const styles = StyleSheet.create({
   tabHeader: {
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.md,
-    backgroundColor: theme.colors.primary,
-    borderBottomLeftRadius: theme.radius.xl,
-    borderBottomRightRadius: theme.radius.xl,
   },
   tabTitle: {
     fontSize: theme.fontSize.xl,
